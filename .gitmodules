@@ -1,0 +1,6 @@
+[submodule "deps/parallel-hashmap"]
+	path = deps/parallel-hashmap
+	url = https://github.com/greg7mdp/parallel-hashmap
+[submodule "deps/fmt"]
+	path = deps/fmt
+	url = https://github.com/fmtlib/fmt
