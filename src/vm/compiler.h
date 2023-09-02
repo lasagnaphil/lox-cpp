@@ -37,7 +37,7 @@ struct ParseRule {
     Precedence precedence;
 };
 
-#define CALL_MEMBER_FN(object,ptrToMember)  ((object).*(ptrToMember))
+#define MEMBER_FN(object,ptrToMember)  ((object).*(ptrToMember))
 
 class Compiler {
 public:
@@ -74,7 +74,7 @@ public:
         current_chunk()->write(byte, m_previous.line);
     }
 
-    void emit_bytes(uint8_t byte1, uint8_t byte2) {
+    void emit_byte(uint8_t byte1, uint8_t byte2) {
         emit_byte(byte1);
         emit_byte(byte2);
     }
@@ -93,7 +93,7 @@ public:
     }
 
     void emit_constant(Value value) {
-        emit_bytes(OP_CONSTANT, make_constant(value));
+        emit_byte(OP_CONSTANT, make_constant(value));
     }
 
     void end() {
@@ -115,8 +115,8 @@ public:
     }
 
     void number() {
-        double value = strtod(m_previous.start, nullptr);
-        emit_constant(value);
+        Value value = strtod(m_previous.start, nullptr);
+        emit_constant(value.as_number());
     }
 
     void unary() {
@@ -125,6 +125,7 @@ public:
         parse_precedence(PREC_UNARY);
 
         switch (op_type) {
+            case TOKEN_BANG: emit_byte(OP_NOT); break;
             case TOKEN_MINUS: emit_byte(OP_NEGATE); break;
             default: return;
         }
@@ -136,10 +137,25 @@ public:
         parse_precedence((Precedence)(rule.precedence + 1));
 
         switch (op_type) {
+            case TOKEN_BANG_EQUAL:    emit_byte(OP_NOT_EQUAL); break;
+            case TOKEN_EQUAL_EQUAL:   emit_byte(OP_EQUAL); break;
+            case TOKEN_GREATER:       emit_byte(OP_GREATER); break;
+            case TOKEN_GREATER_EQUAL: emit_byte(OP_GREATER_EQUAL); break;
+            case TOKEN_LESS:          emit_byte(OP_LESS); break;
+            case TOKEN_LESS_EQUAL:    emit_byte(OP_LESS_EQUAL); break;
             case TOKEN_PLUS:          emit_byte(OP_ADD); break;
             case TOKEN_MINUS:         emit_byte(OP_SUBTRACT); break;
             case TOKEN_STAR:          emit_byte(OP_MULTIPLY); break;
             case TOKEN_SLASH:         emit_byte(OP_DIVIDE); break;
+            default: return; // Unreachable.
+        }
+    }
+
+    void literal() {
+        switch (m_previous.type) {
+            case TOKEN_FALSE: emit_byte(OP_FALSE); break;
+            case TOKEN_NIL: emit_byte(OP_NIL); break;
+            case TOKEN_TRUE: emit_byte(OP_TRUE); break;
             default: return; // Unreachable.
         }
     }
@@ -152,12 +168,12 @@ public:
             return;
         }
 
-        CALL_MEMBER_FN(*this, prefix_rule)();
+        MEMBER_FN(*this, prefix_rule)();
 
         while (precedence <= get_rule(m_current.type).precedence) {
             advance();
             ParseFn infix_rule = get_rule(m_previous.type).infix;
-            CALL_MEMBER_FN(*this, infix_rule)();
+            MEMBER_FN(*this, infix_rule)();
         }
     }
 
@@ -199,4 +215,4 @@ private:
     bool m_panic_mode = false;
 };
 
-#undef CALL_MEMBER_FN
+#undef MEMBER_FN
