@@ -3,6 +3,7 @@
 #include "core/vector.h"
 #include "core/log.h"
 #include "vm/value.h"
+#include "vm/string.h"
 #include <cassert>
 
 #define OPCODE_LIST(X)    \
@@ -34,11 +35,20 @@ enum OpCode : uint8_t {
 
 extern const char* g_opcode_str[OP_COUNT];
 
+inline void print_object(Value value) {
+    switch (value.as.obj->type) {
+        case OBJ_STRING:
+            fmt::print("{}", value.as_string()->chars);
+            break;
+    }
+}
+
 inline void print_value(Value value) {
     switch (value.type) {
         case VAL_BOOL: fmt::print(value.as_bool()? "true": "false"); break;
         case VAL_NIL: fmt::print("nil"); break;
         case VAL_NUMBER: fmt::print("{:g}", value.as_number()); break;
+        case VAL_OBJ: print_object(value); break;
     }
 }
 
@@ -47,6 +57,15 @@ public:
     Vector<uint8_t> m_code;
     Vector<int32_t> m_lines;
     Vector<Value> m_constants;
+
+    Chunk() = default;
+    ~Chunk() {
+        for (Value constant : m_constants) {
+            if (constant.is_obj()) {
+                constant.obj_decref();
+            }
+        }
+    }
 
     void write(OpCode opcode, int32_t line, std::initializer_list<uint8_t> bytes) {
         write(opcode, line);

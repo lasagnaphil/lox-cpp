@@ -2,6 +2,7 @@
 
 #include "vm/chunk.h"
 #include "vm/scanner.h"
+#include "vm/string_interner.h"
 
 #include "core/array.h"
 
@@ -41,11 +42,10 @@ struct ParseRule {
 
 class Compiler {
 public:
-    Chunk* current_chunk() const { return m_compiling_chunk; }
+    Compiler(Scanner* scanner, StringInterner* string_interner)
+    : m_scanner(scanner), m_string_interner(string_interner) {}
 
-    void set_scanner(Scanner* scanner) {
-        m_scanner = scanner;
-    }
+    Chunk* current_chunk() const { return m_compiling_chunk; }
 
     void set_compiling_chunk(Chunk* chunk) {
         m_compiling_chunk = chunk;
@@ -115,8 +115,15 @@ public:
     }
 
     void number() {
-        Value value = strtod(m_previous.start, nullptr);
-        emit_constant(value.as_number());
+        double value = strtod(m_previous.start, nullptr);
+        emit_constant(Value(value));
+    }
+
+    void string() {
+        ObjString* str = m_string_interner->create_string(m_previous.start + 1, m_previous.length - 2);
+        auto value = Value(str);
+        value.obj_incref();
+        emit_constant(value);
     }
 
     void unary() {
@@ -204,6 +211,12 @@ public:
         fmt::print(stderr, ": {}\n", message);
         m_had_error = true;
     }
+
+    void reset_errors() {
+        m_had_error = false;
+        m_panic_mode = false;
+    }
+
 private:
     static ParseRule g_rules[];
 
@@ -211,6 +224,7 @@ private:
     Chunk* m_compiling_chunk = nullptr;
     Token m_current;
     Token m_previous;
+    StringInterner* m_string_interner;
     bool m_had_error = false;
     bool m_panic_mode = false;
 };
