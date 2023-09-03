@@ -30,7 +30,7 @@ ObjString *create_obj_string(const char *chars, int32_t length) {
     return str;
 }
 
-ObjString* create_obj_string_with_known_hash(const char* chars, int32_t length, int32_t hash) {
+ObjString* create_obj_string_with_known_hash(const char* chars, int32_t length, uint32_t hash) {
     auto str = allocate_obj_string(length);
     memcpy(str->chars, chars, length);
     str->hash = hash;

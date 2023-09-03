@@ -17,6 +17,6 @@ ObjString* allocate_obj_string(int32_t length);
 
 ObjString* create_obj_string(const char* chars, int32_t length);
 
-ObjString* create_obj_string_with_known_hash(const char* chars, int32_t length, int32_t hash);
+ObjString* create_obj_string_with_known_hash(const char* chars, int32_t length, uint32_t hash);
 
 ObjString* concat_string(ObjString* a, ObjString* b);

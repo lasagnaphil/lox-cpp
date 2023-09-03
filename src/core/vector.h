@@ -4,6 +4,7 @@
 
 #include <type_traits>
 #include <cstring>
+#include <initializer_list>
 
 #include "span.h"
 

@@ -12,7 +12,7 @@ public:
 
     ObjString* create_string(const char* chars, int32_t length);
 
-    ObjString* create_string(const char* chars, int32_t length, int32_t hash);
+    ObjString* create_string(const char* chars, int32_t length, uint32_t hash);
 
     void free_string(ObjString* str);
 

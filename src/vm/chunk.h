@@ -11,6 +11,10 @@
     X(OP_NIL)             \
     X(OP_TRUE)            \
     X(OP_FALSE)           \
+    X(OP_POP)             \
+    X(OP_GET_GLOBAL)      \
+    X(OP_DEFINE_GLOBAL)   \
+    X(OP_SET_GLOBAL)      \
     X(OP_EQUAL)           \
     X(OP_NOT_EQUAL)       \
     X(OP_GREATER)         \
@@ -23,6 +27,7 @@
     X(OP_DIVIDE)          \
     X(OP_NOT)             \
     X(OP_NEGATE)          \
+    X(OP_PRINT)           \
     X(OP_RETURN)          \
     X(OP_INVALID)
 
@@ -101,10 +106,14 @@ public:
         uint8_t instr = m_code[offset];
         switch (instr) {
             case OP_CONSTANT:
+            case OP_GET_GLOBAL:
+            case OP_DEFINE_GLOBAL:
+            case OP_SET_GLOBAL:
                 return print_constant_instruction((OpCode)instr, offset);
             case OP_NIL:
             case OP_TRUE:
             case OP_FALSE:
+            case OP_POP:
             case OP_EQUAL:
             case OP_NOT_EQUAL:
             case OP_GREATER:
@@ -116,6 +125,7 @@ public:
             case OP_MULTIPLY:
             case OP_DIVIDE:
             case OP_NEGATE:
+            case OP_PRINT:
             case OP_RETURN:
                 return print_simple_instruction((OpCode)instr, offset);
             default:

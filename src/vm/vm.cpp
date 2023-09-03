@@ -3,10 +3,12 @@
 VM::VM() : m_compiler(&m_scanner, &m_string_interner) {
     m_stack_top = m_stack.data();
     m_string_interner.init();
+    init_table(&m_globals);
 }
 
 VM::~VM() {
     m_string_interner.free();
+    free_table(&m_globals);
 }
 
 inline bool read_file_to_buf(const char* path, Vector<char>& buf) {
@@ -75,16 +77,14 @@ bool VM::compile(const char *source, Chunk *chunk) {
     m_scanner.init(source);
     m_compiler.reset_errors();
     m_compiler.set_compiling_chunk(chunk);
-    m_compiler.advance();
-    m_compiler.expression();
-    m_compiler.consume(TOKEN_EOF, "Expect end of expression.");
-    m_compiler.end();
+    m_compiler.compile();
     return !m_compiler.had_error();
 }
 
 InterpretResult VM::run() {
 #define READ_BYTE() (*m_ip++)
 #define READ_CONSTANT() (m_chunk->m_constants[READ_BYTE()])
+#define READ_STRING() READ_CONSTANT().as_string()
 #define BINARY_OP(op) \
     do {              \
         if (!peek(0).is_number() || !peek(1).is_number()) { \
@@ -117,16 +117,46 @@ InterpretResult VM::run() {
             case OP_NIL: push(Value()); break;
             case OP_TRUE: push(Value(true)); break;
             case OP_FALSE: push(Value(false)); break;
+            case OP_POP: pop(); break;
+            case OP_GET_GLOBAL: {
+                ObjString* name = READ_STRING();
+                Value value;
+                if (!table_get(&m_globals, name, &value)) {
+                    runtime_error("Undefined variable '%s'.", name->chars);
+                    return InterpretResult::RuntimeError;
+                }
+                push(value);
+                break;
+            }
+            case OP_DEFINE_GLOBAL: {
+                ObjString *name = READ_STRING();
+                Value a = pop();
+                table_set(&m_globals, name, a);
+                break;
+            }
+            case OP_SET_GLOBAL: {
+                ObjString* name = READ_STRING();
+                if (table_set(&m_globals, name, peek(0))) {
+                    table_delete(&m_globals, name);
+                    runtime_error("Undefined variable '%s'.", name->chars);
+                    return InterpretResult::RuntimeError;
+                }
+                break;
+            }
             case OP_EQUAL: {
                 Value b = pop();
                 Value a = pop();
                 push(Value(Value::equals(a, b)));
+                if (a.is_obj()) a.obj_decref();
+                if (b.is_obj()) b.obj_decref();
                 break;
             }
             case OP_NOT_EQUAL: {
                 Value b = pop();
                 Value a = pop();
                 push(Value(Value::not_equals(a, b)));
+                if (a.is_obj()) a.obj_decref();
+                if (b.is_obj()) b.obj_decref();
                 break;
             }
             case OP_GREATER: BINARY_OP(>); break;
@@ -171,9 +201,14 @@ InterpretResult VM::run() {
                 }
                 push(Value(-pop().as_number()));
             } break;
-            case OP_RETURN: {
+            case OP_PRINT: {
                 print_value(pop());
                 fmt::print("\n");
+                break;
+            }
+            case OP_RETURN: {
+                // print_value(pop());
+                // fmt::print("\n");
                 return InterpretResult::Ok;
             }
         }
@@ -181,5 +216,6 @@ InterpretResult VM::run() {
 
 #undef READ_BYTE
 #undef READ_CONSTANT
+#undef READ_STRING
 #undef BINARY_OP
 }

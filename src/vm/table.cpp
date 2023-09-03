@@ -69,6 +69,9 @@ bool table_get(ObjTable* table, ObjString* key, Value* value) {
     if (entry->key == nullptr) return false;
 
     *value = entry->value;
+    if (value->is_obj()) {
+        value->obj_incref();
+    }
     return true;
 }
 
@@ -82,6 +85,9 @@ bool table_set(ObjTable* table, ObjString* key, Value value) {
     if (is_new_key && entry->value.is_nil()) table->count++;
 
     entry->key = key;
+    if (entry->value.is_obj()) {
+        entry->value.obj_decref();
+    }
     entry->value = value;
     return is_new_key;
 }
@@ -106,7 +112,7 @@ void table_add_all(ObjTable *from, ObjTable *to) {
     }
 }
 
-ObjString *table_find_string(ObjTable *table, const char *chars, int32_t length, int32_t hash) {
+ObjString *table_find_string(ObjTable *table, const char *chars, int32_t length, uint32_t hash) {
     if (table->count == 0) return nullptr;
 
     uint32_t index = hash % table->capacity;

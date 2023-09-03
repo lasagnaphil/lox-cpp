@@ -28,4 +28,4 @@ bool table_delete(ObjTable* table, ObjString* key);
 
 void table_add_all(ObjTable* from, ObjTable* to);
 
-ObjString* table_find_string(ObjTable* table, const char* chars, int32_t length, int32_t hash);
+ObjString* table_find_string(ObjTable* table, const char* chars, int32_t length, uint32_t hash);

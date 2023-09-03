@@ -58,4 +58,5 @@ private:
     Array<Value, MaxStackSize> m_stack;
     Value* m_stack_top = nullptr;
     StringInterner m_string_interner;
+    ObjTable m_globals;
 };
