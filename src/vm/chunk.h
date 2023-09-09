@@ -2,43 +2,12 @@
 
 #include "core/vector.h"
 #include "core/log.h"
+
+#include "vm/opcode.h"
 #include "vm/value.h"
 #include "vm/string.h"
+
 #include <cassert>
-
-#define OPCODE_LIST(X)    \
-    X(OP_CONSTANT)        \
-    X(OP_NIL)             \
-    X(OP_TRUE)            \
-    X(OP_FALSE)           \
-    X(OP_POP)             \
-    X(OP_GET_GLOBAL)      \
-    X(OP_DEFINE_GLOBAL)   \
-    X(OP_SET_GLOBAL)      \
-    X(OP_EQUAL)           \
-    X(OP_NOT_EQUAL)       \
-    X(OP_GREATER)         \
-    X(OP_GREATER_EQUAL)   \
-    X(OP_LESS)            \
-    X(OP_LESS_EQUAL)      \
-    X(OP_ADD)             \
-    X(OP_SUBTRACT)        \
-    X(OP_MULTIPLY)        \
-    X(OP_DIVIDE)          \
-    X(OP_NOT)             \
-    X(OP_NEGATE)          \
-    X(OP_PRINT)           \
-    X(OP_RETURN)          \
-    X(OP_INVALID)
-
-enum OpCode : uint8_t {
-#define X(val) val,
-    OPCODE_LIST(X)
-#undef X
-    OP_COUNT
-};
-
-extern const char* g_opcode_str[OP_COUNT];
 
 inline void print_object(Value value) {
     switch (value.as.obj->type) {
@@ -64,88 +33,25 @@ public:
     Vector<Value> m_constants;
 
     Chunk() = default;
-    ~Chunk() {
-        for (Value constant : m_constants) {
-            if (constant.is_obj()) {
-                constant.obj_decref();
-            }
-        }
-    }
+    ~Chunk();
 
-    void write(OpCode opcode, int32_t line, std::initializer_list<uint8_t> bytes) {
-        write(opcode, line);
-        for (uint8_t byte : bytes) {
-            write(byte, line);
-        }
-    }
-    void write(uint8_t byte, int32_t line) {
-        m_code.push_back(byte);
-        m_lines.push_back(line);
-    }
+    int32_t code_count() const { return m_code.ssize(); }
 
-    int32_t add_constant(Value value) {
-        m_constants.push_back(value);
-        return m_constants.ssize() - 1;
-    }
+    void write(OpCode opcode, int32_t line, std::initializer_list<uint8_t> bytes);
+    void write(uint8_t byte, int32_t line);
 
-    void print_disassembly(const char* name) const {
-        fmt::print("== {} ==\n", name);
-        for (int32_t offset = 0; offset < m_code.ssize(); ) {
-            offset = disassemble_instruction(offset);
-        }
-    }
+    int32_t add_constant(Value value);
 
-    int32_t disassemble_instruction(int32_t offset) const {
-        fmt::print("{:04d} ", offset);
-        if (offset > 0 && m_lines[offset] == m_lines[offset - 1]) {
-            fmt::print("   | ");
-        }
-        else {
-            fmt::print("{:4d} ", m_lines[offset]);
-        }
-        uint8_t instr = m_code[offset];
-        switch (instr) {
-            case OP_CONSTANT:
-            case OP_GET_GLOBAL:
-            case OP_DEFINE_GLOBAL:
-            case OP_SET_GLOBAL:
-                return print_constant_instruction((OpCode)instr, offset);
-            case OP_NIL:
-            case OP_TRUE:
-            case OP_FALSE:
-            case OP_POP:
-            case OP_EQUAL:
-            case OP_NOT_EQUAL:
-            case OP_GREATER:
-            case OP_GREATER_EQUAL:
-            case OP_LESS:
-            case OP_LESS_EQUAL:
-            case OP_ADD:
-            case OP_SUBTRACT:
-            case OP_MULTIPLY:
-            case OP_DIVIDE:
-            case OP_NEGATE:
-            case OP_PRINT:
-            case OP_RETURN:
-                return print_simple_instruction((OpCode)instr, offset);
-            default:
-                return print_simple_instruction(OP_INVALID, offset);
-        }
-    }
+    void print_disassembly(const char* name) const;
+
+    int32_t disassemble_instruction(int32_t offset) const;
 
 private:
-    int32_t print_simple_instruction(OpCode opcode, int32_t offset) const {
-        assert(opcode < OP_COUNT);
-        fmt::print("{}\n", g_opcode_str[opcode]);
-        return offset + 1;
-    }
+    int32_t print_simple_instruction(OpCode opcode, int32_t offset) const;
 
-    int32_t print_constant_instruction(OpCode opcode, int32_t offset) const {
-        assert(opcode < OP_COUNT);
-        uint8_t constant_loc = m_code[offset + 1];
-        fmt::print("{:16s} {:4d} '", g_opcode_str[opcode], constant_loc);
-        print_value(m_constants[constant_loc]);
-        fmt::print("'\n");
-        return offset + 2;
-    }
+    int32_t print_constant_instruction(OpCode opcode, int32_t offset) const;
+
+    int32_t print_byte_instruction(OpCode opcode, int32_t offset) const;
+
+    int32_t print_jump_instruction(OpCode opcode, int32_t sign, int32_t offset) const;
 };

@@ -6,6 +6,8 @@
 
 #include "core/array.h"
 
+#define UINT8_COUNT (UINT8_MAX + 1)
+
 #define DEBUG_PRINT_CODE
 #define DEBUG_TRACE_EXECUTION
 
@@ -36,6 +38,11 @@ struct ParseRule {
     ParseFn prefix;
     ParseFn infix;
     Precedence precedence;
+};
+
+struct Local {
+    Token name;
+    int32_t depth;
 };
 
 #define MEMBER_FN(object,ptrToMember)  ((object).*(ptrToMember))
@@ -97,6 +104,32 @@ public:
         emit_byte(byte2);
     }
 
+    void emit_loop(int32_t loop_start) {
+        emit_byte(OP_LOOP);
+
+        int32_t offset = current_chunk()->code_count() - loop_start + 2;
+        if (offset > UINT16_MAX) error("Loop body too large.");
+
+        emit_byte((offset >> 8) & 0xff);
+        emit_byte(offset & 0xff);
+    }
+
+    int32_t emit_jump(uint8_t instruction) {
+        emit_byte(instruction);
+        emit_byte(0xff);
+        emit_byte(0xff);
+        return current_chunk()->m_code.ssize() - 2;
+    }
+
+    void patch_jump(int32_t offset) {
+        int32_t jump = current_chunk()->m_code.ssize() - offset - 2;
+        if (jump > UINT16_MAX) {
+            error("Too much code to jump over.");
+        }
+        current_chunk()->m_code[offset] = (jump >> 8) & 0xff;
+        current_chunk()->m_code[offset + 1] = jump & 0xff;
+    }
+
     void emit_return() {
         emit_byte(OP_RETURN);
     }
@@ -123,8 +156,30 @@ public:
 #endif
     }
 
+    void begin_scope() {
+        m_scope_depth++;
+    }
+
+    void end_scope() {
+        m_scope_depth--;
+
+        while (m_local_count > 0 &&
+               m_locals[m_local_count - 1].depth > m_scope_depth) {
+            emit_byte(OP_POP);
+            m_local_count--;
+        }
+    }
+
     void expression() {
         parse_precedence(PREC_ASSIGNMENT);
+    }
+
+    void block() {
+        while (!check(TOKEN_RIGHT_BRACE) && !check(TOKEN_EOF)) {
+            declaration();
+        }
+
+        consume(TOKEN_RIGHT_BRACE, "Expect '}' after block.");
     }
 
     void var_declaration() {
@@ -150,7 +205,7 @@ public:
 
         while (m_current.type != TOKEN_EOF) {
             if (m_previous.type == TOKEN_SEMICOLON) return;
-            switch (m_current.type) {
+            switch (m_current.type) {;
                 case TOKEN_CLASS:
                 case TOKEN_FUN:
                 case TOKEN_VAR:
@@ -163,12 +218,94 @@ public:
                 default:
                     ;
             }
+            advance();
         }
     }
 
     void expression_statement() {
         expression();
         consume(TOKEN_SEMICOLON, "Expect ';' after expression.");
+        emit_byte(OP_POP);
+    }
+
+    void for_statement() {
+        begin_scope();
+        consume(TOKEN_LEFT_PAREN, "Expect '(' after 'for'.");
+        // intializer clause
+        if (match(TOKEN_SEMICOLON)) {
+            // No initializer.
+        }
+        else if (match(TOKEN_VAR)) {
+            var_declaration();
+        }
+        else {
+            expression_statement();
+        }
+
+        int32_t loop_start = current_chunk()->code_count();
+        int32_t exit_jump = -1;
+        if (!match(TOKEN_SEMICOLON)) {
+            expression(); // condition expression
+            consume(TOKEN_SEMICOLON, "Expect ';' after loop condition.");
+
+            // Jump out of the loop if the condition is false.
+            exit_jump = emit_jump(OP_JUMP_IF_FALSE);
+            emit_byte(OP_POP);
+        }
+
+        if (!match(TOKEN_RIGHT_PAREN)) {
+            int32_t body_jump = emit_jump(OP_JUMP);
+            int32_t increment_start = current_chunk()->code_count();
+            expression(); // increment expression
+            emit_byte(OP_POP);
+            consume(TOKEN_RIGHT_PAREN, "Expect ')' after for clauses.");
+
+            emit_loop(loop_start);
+            loop_start = increment_start;
+            patch_jump(body_jump);
+        }
+
+        statement(); // body statement
+        emit_loop(loop_start);
+
+        if (exit_jump != -1) {
+            patch_jump(exit_jump);
+            emit_byte(OP_POP);
+        }
+
+        end_scope();
+    }
+
+    void if_statement() {
+        consume(TOKEN_LEFT_PAREN, "Expect '(' after 'if'.");
+        expression();
+        consume(TOKEN_RIGHT_PAREN, "Expect ')' after condition.");
+
+        int32_t then_jump = emit_jump(OP_JUMP_IF_FALSE);
+        emit_byte(OP_POP);
+        statement();
+
+        int32_t else_jump = emit_jump(OP_JUMP);
+
+        patch_jump(then_jump);
+        emit_byte(OP_POP);
+
+        if (match(TOKEN_ELSE)) statement();
+        patch_jump(else_jump);
+    }
+
+    void while_statement() {
+        int32_t loop_start = current_chunk()->code_count();
+        consume(TOKEN_LEFT_PAREN, "Expect '(' after 'while'.");
+        expression();
+        consume(TOKEN_RIGHT_PAREN, "Expect ')' after condition.");
+
+        int32_t exit_jump = emit_jump(OP_JUMP_IF_FALSE);
+        emit_byte(OP_POP);
+        statement();
+        emit_loop(loop_start);
+
+        patch_jump(exit_jump);
         emit_byte(OP_POP);
     }
 
@@ -186,6 +323,20 @@ public:
     void statement() {
         if (match(TOKEN_PRINT)) {
             print_statement();
+        }
+        else if (match(TOKEN_FOR)) {
+            for_statement();
+        }
+        else if (match(TOKEN_IF)) {
+            if_statement();
+        }
+        else if (match(TOKEN_WHILE)) {
+            while_statement();
+        }
+        else if (match(TOKEN_LEFT_BRACE)) {
+            begin_scope();
+            block();
+            end_scope();
         }
         else {
             expression_statement();
@@ -210,14 +361,24 @@ public:
     }
 
     void named_variable(Token name, bool can_assign) {
-        uint8_t arg = identifier_constant(name);
+        uint8_t get_op, set_op;
+        int32_t arg = resolve_local(name);
+        if (arg != -1) {
+            get_op = OP_GET_LOCAL;
+            set_op = OP_SET_LOCAL;
+        }
+        else {
+            arg = identifier_constant(name);
+            get_op = OP_GET_GLOBAL;
+            set_op = OP_SET_GLOBAL;
+        }
 
         if (can_assign && match(TOKEN_EQUAL)) {
             expression();
-            emit_bytes(OP_SET_GLOBAL, arg);
+            emit_bytes(set_op, arg);
         }
         else {
-            emit_bytes(OP_GET_GLOBAL, arg);
+            emit_bytes(get_op, arg);
         }
     }
 
@@ -284,20 +445,94 @@ public:
         }
     }
 
-    uint8_t identifier_constant(const Token& name) {
+    uint8_t identifier_constant(Token name) {
         ObjString* str = m_string_interner->create_string(name.start, name.length);
         Value value = Value(str);
         value.obj_incref();
         return make_constant(value);
     }
 
+    int32_t resolve_local(Token name) {
+        for (int i = m_local_count - 1; i >= 0; i--) {
+            Local& local = m_locals[i];
+            if (identifiers_equal(name, local.name)) {
+                if (local.depth == -1) {
+                    error("Can't read local variable in its own initializer.");
+                }
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    void add_local(Token name) {
+        if (m_local_count == UINT8_COUNT) {
+            error("Too many local variables in function.");
+            return;
+        }
+        Local& local = m_locals[m_local_count++];
+        local.name = name;
+        local.depth = -1;
+    }
+
+    void declare_variable() {
+        if (m_scope_depth == 0) return;
+
+        Token name = m_previous;
+        for (int i = m_local_count - 1; i >= 0; i--) {
+            Local& local = m_locals[i];
+            if (local.depth != -1 && local.depth < m_scope_depth) {
+                break;
+            }
+            if (identifiers_equal(name, local.name)) {
+                error("Already a variable with this name in this scope.");
+            }
+        }
+
+        add_local(name);
+    }
+
     uint8_t parse_variable(const char* error_message) {
         consume(TOKEN_IDENTIFIER, error_message);
+
+        declare_variable();
+        if (m_scope_depth > 0) return 0;
+
         return identifier_constant(m_previous);
     }
 
+    void mark_initialized() {
+        m_locals[m_local_count - 1].depth = m_scope_depth;
+    }
+
     void define_variable(uint8_t global) {
+        if (m_scope_depth > 0) {
+            mark_initialized();
+            return;
+        }
+
         emit_bytes(OP_DEFINE_GLOBAL, global);
+    }
+
+    void and_(bool can_assign) {
+        int32_t end_jump = emit_jump(OP_JUMP_IF_FALSE);
+
+        emit_byte(OP_POP);
+        parse_precedence(PREC_AND);
+
+        patch_jump(end_jump);
+    }
+
+    void or_(bool can_assign) {
+        int else_jump = emit_jump(OP_JUMP_IF_FALSE);
+        int end_jump = emit_jump(OP_JUMP);
+
+        patch_jump(else_jump);
+        emit_byte(OP_POP);
+
+        parse_precedence(PREC_OR);
+        patch_jump(end_jump);
     }
 
     ParseRule get_rule(TokenType type) const {
@@ -341,6 +576,9 @@ private:
     Token m_current;
     Token m_previous;
     StringInterner* m_string_interner;
+    Local m_locals[UINT8_COUNT];
+    int32_t m_local_count = 0;
+    int32_t m_scope_depth = 0;
     bool m_had_error = false;
     bool m_panic_mode = false;
 };

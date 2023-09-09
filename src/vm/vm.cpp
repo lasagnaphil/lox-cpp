@@ -83,6 +83,7 @@ bool VM::compile(const char *source, Chunk *chunk) {
 
 InterpretResult VM::run() {
 #define READ_BYTE() (*m_ip++)
+#define READ_SHORT() (m_ip += 2, (uint16_t)((m_ip[-2] << 8) | m_ip[-1]))
 #define READ_CONSTANT() (m_chunk->m_constants[READ_BYTE()])
 #define READ_STRING() READ_CONSTANT().as_string()
 #define BINARY_OP(op) \
@@ -118,11 +119,21 @@ InterpretResult VM::run() {
             case OP_TRUE: push(Value(true)); break;
             case OP_FALSE: push(Value(false)); break;
             case OP_POP: pop(); break;
+            case OP_SET_LOCAL: {
+                uint8_t slot = READ_BYTE();
+                m_stack[slot] = peek(0);
+                break;
+            }
+            case OP_GET_LOCAL: {
+                uint8_t slot = READ_BYTE();
+                push(m_stack[slot]);
+                break;
+            }
             case OP_GET_GLOBAL: {
                 ObjString* name = READ_STRING();
                 Value value;
                 if (!table_get(&m_globals, name, &value)) {
-                    runtime_error("Undefined variable '%s'.", name->chars);
+                    runtime_error("Undefined variable '{}'.", name->chars);
                     return InterpretResult::RuntimeError;
                 }
                 push(value);
@@ -138,7 +149,7 @@ InterpretResult VM::run() {
                 ObjString* name = READ_STRING();
                 if (table_set(&m_globals, name, peek(0))) {
                     table_delete(&m_globals, name);
-                    runtime_error("Undefined variable '%s'.", name->chars);
+                    runtime_error("Undefined variable '{}'.", name->chars);
                     return InterpretResult::RuntimeError;
                 }
                 break;
@@ -204,6 +215,21 @@ InterpretResult VM::run() {
             case OP_PRINT: {
                 print_value(pop());
                 fmt::print("\n");
+                break;
+            }
+            case OP_JUMP: {
+                uint16_t offset = READ_SHORT();
+                m_ip += offset;
+                break;
+            }
+            case OP_JUMP_IF_FALSE: {
+                uint16_t offset = READ_SHORT();
+                if (peek(0).is_falsey()) m_ip += offset;
+                break;
+            }
+            case OP_LOOP: {
+                uint16_t offset = READ_SHORT();
+                m_ip -= offset;
                 break;
             }
             case OP_RETURN: {

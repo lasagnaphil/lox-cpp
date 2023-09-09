@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(LOX_SRCS
         src/core/log.cpp
         src/vm/vm.cpp
+        src/vm/opcode.cpp
         src/vm/chunk.cpp
         src/vm/compiler.cpp
         src/vm/value.cpp

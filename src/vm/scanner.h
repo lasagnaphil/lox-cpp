@@ -29,6 +29,11 @@ struct Token {
     TokenType type;
 };
 
+inline bool identifiers_equal(const Token& a, const Token& b) {
+    if (a.length != b.length) return false;
+    return memcmp(a.start, b.start, a.length) == 0;
+}
+
 inline bool is_alpha(char c) {
     return (c >= 'a' && c <= 'z') ||
            (c >= 'A' && c <= 'A') ||
