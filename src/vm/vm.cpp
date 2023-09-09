@@ -132,7 +132,8 @@ InterpretResult VM::run() {
             case OP_GET_GLOBAL: {
                 ObjString* name = READ_STRING();
                 Value value;
-                if (!table_get(&m_globals, name, &value)) {
+                // TODO: create specialized table_string_get() for optimization
+                if (!table_get(&m_globals, Value(name), &value)) {
                     runtime_error("Undefined variable '{}'.", name->chars);
                     return InterpretResult::RuntimeError;
                 }
@@ -142,13 +143,16 @@ InterpretResult VM::run() {
             case OP_DEFINE_GLOBAL: {
                 ObjString *name = READ_STRING();
                 Value a = pop();
-                table_set(&m_globals, name, a);
+                // TODO: create specialized table_string_set() for optimization
+                table_set(&m_globals, Value(name), a);
                 break;
             }
             case OP_SET_GLOBAL: {
                 ObjString* name = READ_STRING();
-                if (table_set(&m_globals, name, peek(0))) {
-                    table_delete(&m_globals, name);
+                // TODO: create specialized table_string_set() for optimization
+                Value name_value = Value(name);
+                if (table_set(&m_globals, name_value, peek(0))) {
+                    table_delete(&m_globals, name_value);
                     runtime_error("Undefined variable '{}'.", name->chars);
                     return InterpretResult::RuntimeError;
                 }

@@ -87,6 +87,8 @@ struct Value {
         }
     }
 
+    uint32_t hash() const;
+
     static bool equals(const Value& a, const Value& b);
 
     static bool not_equals(const Value& a, const Value& b);

@@ -3,7 +3,7 @@
 #include "vm/value.h"
 
 struct Entry {
-    ObjString* key;
+    Value key;
     Value value;
 };
 
@@ -20,11 +20,11 @@ void init_table(ObjTable* table);
 
 void free_table(ObjTable* table);
 
-bool table_get(ObjTable* table, ObjString* key, Value* value);
+bool table_get(ObjTable* table, Value key, Value* value);
 
-bool table_set(ObjTable* table, ObjString* key, Value value);
+bool table_set(ObjTable* table, Value key, Value value);
 
-bool table_delete(ObjTable* table, ObjString* key);
+bool table_delete(ObjTable* table, Value key);
 
 void table_add_all(ObjTable* from, ObjTable* to);
 

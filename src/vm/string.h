@@ -11,7 +11,7 @@ struct ObjString {
     ObjString() : obj(OBJ_STRING) {}
 };
 
-int32_t hash_string(const char *key, int32_t length);
+uint32_t hash_string(const char *key, int32_t length);
 
 ObjString* allocate_obj_string(int32_t length);
 

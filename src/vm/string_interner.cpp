@@ -20,7 +20,7 @@ ObjString *StringInterner::create_string(const char *chars, int32_t length, uint
     }
     else {
         ObjString* new_string = create_obj_string_with_known_hash(chars, length, hash);
-        table_set(&m_strings, new_string, Value());
+        table_set(&m_strings, Value(new_string), Value());
         return new_string;
     }
 }
