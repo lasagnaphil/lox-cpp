@@ -6,6 +6,7 @@ enum TokenType : uint8_t {
     TOKEN_LEFT_BRACE, TOKEN_RIGHT_BRACE,
     TOKEN_COMMA, TOKEN_DOT, TOKEN_MINUS, TOKEN_PLUS,
     TOKEN_SEMICOLON, TOKEN_SLASH, TOKEN_STAR,
+    TOKEN_QUESTION_MARK, TOKEN_COLON,
     // One or two character tokens.
     TOKEN_BANG, TOKEN_BANG_EQUAL,
     TOKEN_EQUAL, TOKEN_EQUAL_EQUAL,
@@ -74,6 +75,8 @@ public:
             case '+': return make_token(TOKEN_PLUS);
             case '/': return make_token(TOKEN_SLASH);
             case '*': return make_token(TOKEN_STAR);
+            case '?': return make_token(TOKEN_QUESTION_MARK);
+            case ':': return make_token(TOKEN_COLON);
             case '!': return make_token(match('=') ? TOKEN_BANG_EQUAL : TOKEN_BANG);
             case '=': return make_token(match('=') ? TOKEN_EQUAL_EQUAL : TOKEN_EQUAL);
             case '<': return make_token(match('=') ? TOKEN_LESS_EQUAL : TOKEN_LESS);

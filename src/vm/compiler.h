@@ -20,6 +20,7 @@ enum class InterpretResult {
 enum Precedence : uint8_t {
     PREC_NONE,
     PREC_ASSIGNMENT,  // =
+    PREC_TERNARY,     // ?:
     PREC_OR,          // or
     PREC_AND,         // and
     PREC_EQUALITY,    // == !=
@@ -418,7 +419,7 @@ public:
         }
     }
 
-    void literal(bool assign) {
+    void literal(bool can_assign) {
         switch (m_previous.type) {
             case TOKEN_FALSE: emit_byte(OP_FALSE); break;
             case TOKEN_NIL: emit_byte(OP_NIL); break;
@@ -525,13 +526,30 @@ public:
     }
 
     void or_(bool can_assign) {
-        int else_jump = emit_jump(OP_JUMP_IF_FALSE);
-        int end_jump = emit_jump(OP_JUMP);
+        int32_t else_jump = emit_jump(OP_JUMP_IF_FALSE);
+        int32_t end_jump = emit_jump(OP_JUMP);
 
         patch_jump(else_jump);
         emit_byte(OP_POP);
 
         parse_precedence(PREC_OR);
+        patch_jump(end_jump);
+    }
+
+    void ternary(bool can_assign) {
+        int32_t else_jump = emit_jump(OP_JUMP_IF_FALSE);
+
+        emit_byte(OP_POP);
+        parse_precedence(PREC_TERNARY);
+        consume(TOKEN_COLON, "Expect ':' after expression.");
+
+        int32_t end_jump = emit_jump(OP_JUMP);
+
+        patch_jump(else_jump);
+
+        emit_byte(OP_POP);
+        parse_precedence(PREC_TERNARY);
+
         patch_jump(end_jump);
     }
 
