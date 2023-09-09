@@ -3,12 +3,12 @@
 VM::VM() : m_compiler(&m_scanner, &m_string_interner) {
     m_stack_top = m_stack.data();
     m_string_interner.init();
-    init_table(&m_globals);
+    m_globals.init();
 }
 
 VM::~VM() {
     m_string_interner.free();
-    clear_table(&m_globals);
+    m_globals.clear();
 }
 
 inline bool read_file_to_buf(const char* path, Vector<char>& buf) {
@@ -134,7 +134,7 @@ InterpretResult VM::run() {
                 ObjString* name = READ_STRING();
                 Value value;
                 // TODO: create specialized table_string_get() for optimization
-                if (!table_get(&m_globals, Value(name), &value)) {
+                if (!m_globals.get(Value(name), &value)) {
                     runtime_error("Undefined variable '{}'.", name->chars);
                     return InterpretResult::RuntimeError;
                 }
@@ -146,15 +146,15 @@ InterpretResult VM::run() {
                 ObjString *name = READ_STRING();
                 Value a = pop();
                 // TODO: create specialized table_string_set() for optimization
-                table_set(&m_globals, Value(name), a);
+                m_globals.set(Value(name), a);
                 break;
             }
             case OP_SET_GLOBAL: {
                 ObjString* name = READ_STRING();
                 // TODO: create specialized table_string_set() for optimization
                 Value name_value = Value(name);
-                if (table_set(&m_globals, name_value, peek(0))) {
-                    table_delete(&m_globals, name_value);
+                if (m_globals.set(name_value, peek(0))) {
+                    m_globals.remove(name_value);
                     runtime_error("Undefined variable '{}'.", name->chars);
                     return InterpretResult::RuntimeError;
                 }
@@ -257,7 +257,7 @@ InterpretResult VM::run() {
                 Value key = pop();
                 Value table = peek(0);
                 Value value;
-                table_get(table.as_table(), key, &value);
+                table.as_table()->get(key, &value);
                 push(value);
                 if (value.is_obj()) value.obj_incref();
                 if (key.is_obj()) key.obj_decref();
@@ -266,7 +266,7 @@ InterpretResult VM::run() {
                 Value value = pop();
                 Value key = pop();
                 Value table = peek(0);
-                table_set(table.as_table(), key, value);
+                table.as_table()->set(key, value);
                 if (value.is_obj()) value.obj_decref();
             }
         }

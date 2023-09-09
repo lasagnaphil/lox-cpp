@@ -12,7 +12,7 @@ void Value::obj_free() {
             break;
         }
         case OBJ_TABLE: {
-            clear_table(reinterpret_cast<ObjTable *>(as.obj));
+            free_obj_table(reinterpret_cast<ObjTable*>(as.obj));
             break;
         }
     }
