@@ -8,24 +8,6 @@
 #include "vm/string.h"
 
 #include <cassert>
-
-inline void print_object(Value value) {
-    switch (value.as.obj->type) {
-        case OBJ_STRING:
-            fmt::print("{}", value.as_string()->chars);
-            break;
-    }
-}
-
-inline void print_value(Value value) {
-    switch (value.type) {
-        case VAL_BOOL: fmt::print(value.as_bool()? "true": "false"); break;
-        case VAL_NIL: fmt::print("nil"); break;
-        case VAL_NUMBER: fmt::print("{:g}", value.as_number()); break;
-        case VAL_OBJ: print_object(value); break;
-    }
-}
-
 class Chunk {
 public:
     Vector<uint8_t> m_code;

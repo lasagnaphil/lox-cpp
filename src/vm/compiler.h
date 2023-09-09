@@ -3,6 +3,7 @@
 #include "vm/chunk.h"
 #include "vm/scanner.h"
 #include "vm/string_interner.h"
+#include "vm/table.h"
 
 #include "core/array.h"
 
@@ -359,6 +360,27 @@ public:
         auto value = Value(str);
         value.obj_incref();
         emit_constant(value);
+    }
+
+    void table(bool can_assign) {
+        emit_byte(OP_TABLE_NEW);
+
+        while (match(TOKEN_IDENTIFIER)) {
+            ObjString* str = m_string_interner->create_string(m_previous.start, m_previous.length);
+            auto key = Value(str);
+            key.obj_incref();
+            emit_constant(key);
+
+            consume(TOKEN_EQUAL, "Expect '=' after identifier in table initializer.");
+
+            expression();
+
+            emit_byte(OP_TABLE_SET);
+
+            if (!match(TOKEN_COMMA)) break;
+        }
+
+        consume(TOKEN_RIGHT_BRACE, "Expect '}' after table initializer.");
     }
 
     void named_variable(Token name, bool can_assign) {

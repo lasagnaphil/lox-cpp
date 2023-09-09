@@ -2,7 +2,9 @@
 
 #include <cstdint>
 #include <cstdlib>
+
 #include <type_traits>
+#include <string>
 
 enum ValueType {
     VAL_BOOL,
@@ -37,7 +39,7 @@ struct Obj {
 };
 
 struct ObjString;
-struct ObjMap;
+struct ObjTable;
 
 struct Value {
     ValueType type : 4;
@@ -57,7 +59,7 @@ struct Value {
     explicit Value(double number) : type(VAL_NUMBER) { as.number = number; }
     explicit Value(Obj* obj) : type(VAL_OBJ) { as.obj = obj; }
     explicit Value(ObjString* str) : type(VAL_OBJ) { as.obj = reinterpret_cast<Obj*>(str); }
-    explicit Value(ObjMap* str) : type(VAL_OBJ) { as.obj = reinterpret_cast<Obj*>(str); }
+    explicit Value(ObjTable* str) : type(VAL_OBJ) { as.obj = reinterpret_cast<Obj*>(str); }
 
     bool is_bool() const { return type == VAL_BOOL; }
     bool is_nil() const { return type == VAL_NIL; }
@@ -70,6 +72,7 @@ struct Value {
     double as_number() const { return as.number; }
     Obj* as_obj() const { return as.obj; }
     ObjString* as_string() const { return reinterpret_cast<ObjString*>(as.obj); }
+    ObjTable* as_table() const { return reinterpret_cast<ObjTable*>(as.obj); }
 
     bool is_falsey() const {
         return is_nil() || (is_bool() && !as_bool());
@@ -82,14 +85,19 @@ struct Value {
     void obj_decref() {
         as.obj->refcount--;
         if (as.obj->refcount == 0) {
-            free(as.obj);
+            obj_free();
             // After this, the Value is in an invalid state, don't use it!
         }
     }
+
+    void obj_free();
 
     uint32_t hash() const;
 
     static bool equals(const Value& a, const Value& b);
 
     static bool not_equals(const Value& a, const Value& b);
+
+    std::string to_std_string() const;
+
 };

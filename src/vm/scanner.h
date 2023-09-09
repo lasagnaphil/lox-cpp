@@ -4,6 +4,7 @@ enum TokenType : uint8_t {
     // Single-character tokens.
     TOKEN_LEFT_PAREN, TOKEN_RIGHT_PAREN,
     TOKEN_LEFT_BRACE, TOKEN_RIGHT_BRACE,
+    TOKEN_LEFT_BRACKET, TOKEN_RIGHT_BRACKET,
     TOKEN_COMMA, TOKEN_DOT, TOKEN_MINUS, TOKEN_PLUS,
     TOKEN_SEMICOLON, TOKEN_SLASH, TOKEN_STAR,
     TOKEN_QUESTION_MARK, TOKEN_COLON,
@@ -68,6 +69,8 @@ public:
             case ')': return make_token(TOKEN_RIGHT_PAREN);
             case '{': return make_token(TOKEN_LEFT_BRACE);
             case '}': return make_token(TOKEN_RIGHT_BRACE);
+            case '[': return make_token(TOKEN_LEFT_BRACKET);
+            case ']': return make_token(TOKEN_RIGHT_BRACKET);
             case ';': return make_token(TOKEN_SEMICOLON);
             case ',': return make_token(TOKEN_COMMA);
             case '.': return make_token(TOKEN_DOT);

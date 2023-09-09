@@ -1,4 +1,7 @@
 #include "vm/chunk.h"
+#include "vm/table.h"
+
+#include <string>
 
 Chunk::~Chunk() {
     for (Value constant : m_constants) {
@@ -64,6 +67,9 @@ int32_t Chunk::disassemble_instruction(int32_t offset) const {
         case OP_NEGATE:
         case OP_PRINT:
         case OP_RETURN:
+        case OP_TABLE_NEW:
+        case OP_TABLE_GET:
+        case OP_TABLE_SET:
             return print_simple_instruction((OpCode)instr, offset);
         case OP_GET_LOCAL:
         case OP_SET_LOCAL:
@@ -88,7 +94,7 @@ int32_t Chunk::print_constant_instruction(OpCode opcode, int32_t offset) const {
     assert(opcode < OP_COUNT);
     uint8_t constant_loc = m_code[offset + 1];
     fmt::print("{:16s} {:4d} '", g_opcode_str[opcode], constant_loc);
-    print_value(m_constants[constant_loc]);
+    fmt::print(m_constants[constant_loc].to_std_string());
     fmt::print("'\n");
     return offset + 2;
 }

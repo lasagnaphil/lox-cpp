@@ -7,7 +7,7 @@
 ParseRule Compiler::g_rules[] = {
         [TOKEN_LEFT_PAREN]    = {&Compiler::grouping,   NULL,                   PREC_NONE},
         [TOKEN_RIGHT_PAREN]   = {NULL,                  NULL,                   PREC_NONE},
-        [TOKEN_LEFT_BRACE]    = {NULL,                  NULL,                   PREC_NONE},
+        [TOKEN_LEFT_BRACE]    = {&Compiler::table,      NULL,                   PREC_NONE},
         [TOKEN_RIGHT_BRACE]   = {NULL,                  NULL,                   PREC_NONE},
         [TOKEN_COMMA]         = {NULL,                  NULL,                   PREC_NONE},
         [TOKEN_DOT]           = {NULL,                  NULL,                   PREC_NONE},

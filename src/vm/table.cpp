@@ -9,14 +9,35 @@ int32_t grow_capacity(int32_t capacity) {
     return capacity < 8? 8 : capacity * 2;
 }
 
+ObjTable *create_obj_table() {
+    void* raw_data = malloc(sizeof(ObjTable));
+    new (raw_data) ObjTable();
+    ObjTable* table = static_cast<ObjTable*>(raw_data);
+    init_table(table);
+    return table;
+}
+
+void free_obj_table(ObjTable* table) {
+    clear_table(table);
+    table->~ObjTable();
+    free(table);
+}
+
 void init_table(ObjTable* table) {
     table->count = 0;
     table->capacity = 0;
     table->entries = nullptr;
 }
 
-void free_table(ObjTable* table) {
-    delete [] table->entries;
+void clear_table(ObjTable* table) {
+    for (int32_t i = 0; i < table->capacity; i++) {
+        Entry* entry = &table->entries[i];
+        if (!entry->key.is_nil()) {
+            if (entry->key.is_obj()) entry->key.obj_decref();
+            if (entry->value.is_obj()) entry->value.obj_decref();
+        }
+    }
+    free(table->entries);
     init_table(table);
 }
 
@@ -41,7 +62,7 @@ static Entry* find_entry(Entry* entries, int32_t capacity, Value key) {
 }
 
 static void adjust_capacity(ObjTable* table, int32_t capacity) {
-    Entry* entries = new Entry[capacity];
+    Entry* entries = static_cast<Entry*>(malloc(sizeof(Entry) * capacity));
     for (int32_t i = 0; i < capacity; i++) {
         entries[i].key = Value();
         entries[i].value = Value();
@@ -82,11 +103,10 @@ bool table_set(ObjTable* table, Value key, Value value) {
     }
     Entry* entry = find_entry(table->entries, table->capacity, key);
     bool is_new_key = entry->key.is_nil();
-    if (is_new_key && entry->value.is_nil()) table->count++;
-
-    entry->key = key;
-    if (entry->value.is_obj()) {
-        entry->value.obj_decref();
+    if (is_new_key) {
+        entry->key = key;
+        if (entry->value.is_nil()) table->count++;
+        else if (entry->value.is_obj()) entry->value.obj_decref();
     }
     entry->value = value;
     return is_new_key;
@@ -97,6 +117,9 @@ bool table_delete(ObjTable* table, Value key) {
 
     Entry* entry = find_entry(table->entries, table->capacity, key);
     if (entry->key.is_nil()) return false;
+
+    if (entry->key.is_obj()) entry->key.obj_decref();
+    if (entry->value.is_obj()) entry->value.obj_decref();
 
     entry->key = Value();
     entry->value = Value(true); // tombstone
@@ -129,7 +152,6 @@ ObjString *table_find_string(ObjTable *table, const char *chars, int32_t length,
                 return key;
             }
         }
-        else
         index = (index + 1) % table->capacity;
     }
 }

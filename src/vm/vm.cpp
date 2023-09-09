@@ -8,7 +8,7 @@ VM::VM() : m_compiler(&m_scanner, &m_string_interner) {
 
 VM::~VM() {
     m_string_interner.free();
-    free_table(&m_globals);
+    clear_table(&m_globals);
 }
 
 inline bool read_file_to_buf(const char* path, Vector<char>& buf) {
@@ -102,7 +102,8 @@ InterpretResult VM::run() {
         fmt::print("          ");
         for (Value* slot = m_stack.data(); slot < m_stack_top; slot++) {
             fmt::print("[ ");
-            print_value(*slot);
+            std::string str = slot->to_std_string();
+            fputs(str.c_str(), stdout);
             fmt::print(" ]");
         }
         fmt::print("\n");
@@ -138,6 +139,7 @@ InterpretResult VM::run() {
                     return InterpretResult::RuntimeError;
                 }
                 push(value);
+                if (value.is_obj()) value.obj_incref();
                 break;
             }
             case OP_DEFINE_GLOBAL: {
@@ -217,7 +219,10 @@ InterpretResult VM::run() {
                 push(Value(-pop().as_number()));
             } break;
             case OP_PRINT: {
-                print_value(pop());
+                Value value = pop();
+                std::string str = value.to_std_string();
+                fputs(str.c_str(), stdout);
+                if (value.is_obj()) value.obj_decref();
                 fmt::print("\n");
                 break;
             }
@@ -240,6 +245,29 @@ InterpretResult VM::run() {
                 // print_value(pop());
                 // fmt::print("\n");
                 return InterpretResult::Ok;
+            }
+            case OP_TABLE_NEW: {
+                ObjTable* table = create_obj_table();
+                Value value = Value(table);
+                value.obj_incref();
+                push(value);
+                break;
+            }
+            case OP_TABLE_GET: {
+                Value key = pop();
+                Value table = peek(0);
+                Value value;
+                table_get(table.as_table(), key, &value);
+                push(value);
+                if (value.is_obj()) value.obj_incref();
+                if (key.is_obj()) key.obj_decref();
+            }
+            case OP_TABLE_SET: {
+                Value value = pop();
+                Value key = pop();
+                Value table = peek(0);
+                table_set(table.as_table(), key, value);
+                if (value.is_obj()) value.obj_decref();
             }
         }
     }
