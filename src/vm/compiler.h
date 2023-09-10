@@ -4,6 +4,7 @@
 #include "vm/scanner.h"
 #include "vm/string_interner.h"
 #include "vm/table.h"
+#include "vm/function.h"
 
 #include "core/array.h"
 
@@ -16,6 +17,10 @@ enum class InterpretResult {
     Ok,
     CompileError,
     RuntimeError
+};
+
+enum class FunctionType {
+    FUnction, Script
 };
 
 enum Precedence : uint8_t {
@@ -54,7 +59,16 @@ public:
     Compiler(Scanner* scanner, StringInterner* string_interner)
     : m_scanner(scanner), m_string_interner(string_interner) {}
 
-    Chunk* current_chunk() const { return m_compiling_chunk; }
+    void init(FunctionType type) {
+        m_function = nullptr;
+        m_function_type = type;
+        m_local_count = 0;
+        m_scope_depth = 0;
+    }
+
+    Chunk* current_chunk() const {
+        return &m_function->chunk;
+    }
 
     void set_compiling_chunk(Chunk* chunk) {
         m_compiling_chunk = chunk;
@@ -660,6 +674,8 @@ private:
     Token m_current;
     Token m_previous;
     StringInterner* m_string_interner;
+    ObjFunction* m_function;
+    FunctionType m_function_type = FunctionType::Script;
     Local m_locals[UINT8_COUNT];
     int32_t m_local_count = 0;
     int32_t m_scope_depth = 0;

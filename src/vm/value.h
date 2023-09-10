@@ -16,7 +16,8 @@ enum ValueType {
 enum ObjType {
     OBJ_STRING,
     OBJ_ARRAY,
-    OBJ_TABLE
+    OBJ_TABLE,
+    OBJ_FUNCTION
 };
 
 // https://en.wikipedia.org/wiki/Xorshift
@@ -42,6 +43,7 @@ struct Obj {
 struct ObjString;
 struct ObjArray;
 struct ObjTable;
+struct ObjFunction;
 
 struct Value {
     ValueType type : 4;
@@ -72,6 +74,7 @@ struct Value {
     bool is_string() const { return is_obj_type(OBJ_STRING); }
     bool is_array() const { return is_obj_type(OBJ_ARRAY); }
     bool is_table() const { return is_obj_type(OBJ_TABLE); }
+    bool is_function() const { return is_obj_type(OBJ_FUNCTION); }
 
     bool as_bool() const { return as.boolean; }
     double as_number() const { return as.number; }
@@ -79,6 +82,7 @@ struct Value {
     ObjString* as_string() const { return reinterpret_cast<ObjString*>(as.obj); }
     ObjArray* as_array() const { return reinterpret_cast<ObjArray*>(as.obj); }
     ObjTable* as_table() const { return reinterpret_cast<ObjTable*>(as.obj); }
+    ObjFunction* as_function() const { return reinterpret_cast<ObjFunction*>(as.obj); }
 
     bool is_falsey() const {
         return is_nil() || (is_bool() && !as_bool());

@@ -3,6 +3,7 @@
 #include "vm/string.h"
 #include "vm/array.h"
 #include "vm/table.h"
+#include "vm/function.h"
 
 #include <fmt/core.h>
 
@@ -18,6 +19,10 @@ void Value::obj_free() {
         }
         case OBJ_TABLE: {
             free_obj_table(reinterpret_cast<ObjTable*>(as.obj));
+            break;
+        }
+        case OBJ_FUNCTION: {
+            free_obj_function(reinterpret_cast<ObjFunction*>(as.obj));
             break;
         }
     }
@@ -112,6 +117,10 @@ std::string object_to_string(Value value) {
             }
             str += " }";
             return str;
+        }
+        case OBJ_FUNCTION: {
+            ObjFunction* fn = value.as_function();
+            fmt::format("<fn {}>", )
         }
     }
 }
