@@ -11,6 +11,7 @@ set(LOX_SRCS
         src/vm/compiler.cpp
         src/vm/value.cpp
         src/vm/string.cpp
+        src/vm/array.cpp
         src/vm/table.cpp
         src/vm/string_interner.cpp
         src/main.cpp

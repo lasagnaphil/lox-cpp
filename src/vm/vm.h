@@ -38,9 +38,12 @@ private:
         return m_stack_top[-1 - distance];
     }
 
+    bool get(Value obj, Value key, Value* value);
+    bool set(Value obj, Value key, Value value);
+
     template <typename ...Args>
     inline void runtime_error(const char* fmt, Args&&... args) {
-        fmt::print(fmt, std::forward<Args...>(args)...);
+        fmt::print(fmt, std::forward<Args>(args)...);
         fputs("\n", stderr);
 
         size_t instr = m_ip - m_chunk->m_code.data() - 1;

@@ -29,7 +29,7 @@ enum Precedence : uint8_t {
     PREC_TERM,        // + -
     PREC_FACTOR,      // * /
     PREC_UNARY,       // ! -
-    PREC_CALL,        // . ()
+    PREC_CALL,        // . () []
     PREC_PRIMARY
 };
 
@@ -130,6 +130,18 @@ public:
         }
         current_chunk()->m_code[offset] = (jump >> 8) & 0xff;
         current_chunk()->m_code[offset + 1] = jump & 0xff;
+    }
+
+    int32_t emit_array_new() {
+        emit_byte(OP_ARRAY_NEW);
+        emit_byte(0xff);
+        emit_byte(0xff);
+        return current_chunk()->m_code.ssize() - 2;
+    }
+
+    void patch_array_new(int32_t offset, int16_t count) {
+        current_chunk()->m_code[offset] = (count >> 8) & 0xff;
+        current_chunk()->m_code[offset + 1] = count & 0xff;
     }
 
     void emit_return() {
@@ -371,16 +383,44 @@ public:
             key.obj_incref();
             emit_constant(key);
 
-            consume(TOKEN_EQUAL, "Expect '=' after identifier in table initializer.");
+            consume(TOKEN_EQUAL, "Expect '=' after identifier in table initializer list.");
 
             expression();
 
-            emit_byte(OP_TABLE_SET);
+            emit_byte(OP_SET_NOPOP);
 
             if (!match(TOKEN_COMMA)) break;
         }
 
-        consume(TOKEN_RIGHT_BRACE, "Expect '}' after table initializer.");
+        consume(TOKEN_RIGHT_BRACE, "Expect '}' after table initializer list.");
+    }
+
+    void array(bool can_assign) {
+        int32_t array_size_offset = emit_array_new();
+
+        int32_t index = 0;
+        while (true) {
+            emit_constant(Value((double)index));
+            expression();
+            emit_byte(OP_SET_NOPOP);
+            index++;
+            if (!match(TOKEN_COMMA)) break;
+        }
+
+        patch_array_new(array_size_offset, index);
+        consume(TOKEN_RIGHT_BRACKET, "Expect ']' after array initializer list.");
+    }
+
+    void subscript(bool can_assign) {
+        expression();
+        consume(TOKEN_RIGHT_BRACKET, "Expect ']' after expression.");
+        if (can_assign && match(TOKEN_EQUAL)) {
+            expression();
+            emit_byte(OP_SET);
+        }
+        else {
+            emit_byte(OP_GET);
+        }
     }
 
     void named_variable(Token name, bool can_assign) {
@@ -465,6 +505,10 @@ public:
             advance();
             ParseFn infix_rule = get_rule(m_previous.type).infix;
             MEMBER_FN(*this, infix_rule)(can_assign);
+        }
+
+        if (can_assign && match(TOKEN_EQUAL)) {
+            error("Invalid assignment target.");
         }
     }
 

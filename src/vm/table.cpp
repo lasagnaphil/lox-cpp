@@ -5,10 +5,6 @@
 #include <new>
 #include <cstring>
 
-int32_t grow_capacity(int32_t capacity) {
-    return capacity < 8? 8 : capacity * 2;
-}
-
 ObjTable *create_obj_table() {
     void* raw_data = malloc(sizeof(ObjTable));
     new (raw_data) ObjTable();
@@ -21,6 +17,10 @@ void free_obj_table(ObjTable* table) {
     table->clear();
     table->~ObjTable();
     free(table);
+}
+
+static int32_t grow_capacity(int32_t capacity) {
+    return capacity < 8? 8 : capacity * 2;
 }
 
 void ObjTable::init() {

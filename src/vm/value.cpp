@@ -1,6 +1,7 @@
 #include "vm/value.h"
 
 #include "vm/string.h"
+#include "vm/array.h"
 #include "vm/table.h"
 
 #include <fmt/core.h>
@@ -9,6 +10,10 @@ void Value::obj_free() {
     switch (as.obj->type) {
         case OBJ_STRING: {
             free_obj_string(reinterpret_cast<ObjString*>(as.obj));
+            break;
+        }
+        case OBJ_ARRAY: {
+            free_obj_array(reinterpret_cast<ObjArray*>(as.obj));
             break;
         }
         case OBJ_TABLE: {
@@ -76,6 +81,21 @@ std::string value_to_string(Value value) {
 std::string object_to_string(Value value) {
     switch (value.as.obj->type) {
         case OBJ_STRING: return value.as_string()->chars;
+        case OBJ_ARRAY: {
+            std::string str = "[ ";
+            ObjArray* array = value.as_array();
+            bool entry_start = true;
+            for (int32_t i = 0; i < array->count; i++) {
+                Value value = array->values[i];
+                if(!value.is_nil()) {
+                    if (entry_start) entry_start = false;
+                    else str += ", ";
+                    str += value_to_string(value);
+                }
+            }
+            str += " ]";
+            return str;
+        }
         case OBJ_TABLE: {
             std::string str = "{ ";
             ObjTable* table = value.as_table();

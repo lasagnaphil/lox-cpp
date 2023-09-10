@@ -30,9 +30,12 @@
     X(OP_JUMP_IF_FALSE)   \
     X(OP_LOOP)            \
     X(OP_RETURN)          \
+    X(OP_ARRAY_NEW)       \
     X(OP_TABLE_NEW)       \
-    X(OP_TABLE_GET)       \
-    X(OP_TABLE_SET)       \
+    X(OP_GET)             \
+    X(OP_SET)             \
+    X(OP_GET_NOPOP)       \
+    X(OP_SET_NOPOP)       \
     X(OP_INVALID)
 
 enum OpCode : uint8_t {

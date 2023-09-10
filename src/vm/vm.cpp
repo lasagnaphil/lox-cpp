@@ -1,5 +1,9 @@
 #include "vm/vm.h"
 
+#include "vm/string.h"
+#include "vm/array.h"
+#include "vm/table.h"
+
 VM::VM() : m_compiler(&m_scanner, &m_string_interner) {
     m_stack_top = m_stack.data();
     m_string_interner.init();
@@ -122,12 +126,17 @@ InterpretResult VM::run() {
             case OP_POP: pop(); break;
             case OP_SET_LOCAL: {
                 uint8_t slot = READ_BYTE();
-                m_stack[slot] = peek(0);
+                auto& val = m_stack[slot];
+                if (val.is_obj()) val.obj_decref();
+                val = peek(0);
+                if (val.is_obj()) val.obj_incref();
                 break;
             }
             case OP_GET_LOCAL: {
                 uint8_t slot = READ_BYTE();
-                push(m_stack[slot]);
+                auto val = m_stack[slot];
+                push(val);
+                if (val.is_obj()) val.obj_incref();
                 break;
             }
             case OP_GET_GLOBAL: {
@@ -253,21 +262,55 @@ InterpretResult VM::run() {
                 push(value);
                 break;
             }
-            case OP_TABLE_GET: {
-                Value key = pop();
-                Value table = peek(0);
-                Value value;
-                table.as_table()->get(key, &value);
+            case OP_ARRAY_NEW: {
+                uint16_t size = READ_SHORT();
+                ObjArray* array = create_obj_array();
+                array->resize(size);
+                Value value = Value(array);
+                value.obj_incref();
                 push(value);
-                if (value.is_obj()) value.obj_incref();
-                if (key.is_obj()) key.obj_decref();
+                break;
             }
-            case OP_TABLE_SET: {
+            case OP_GET: {
+                Value key = pop();
+                Value obj = pop();
+                Value value;
+                if (!get(obj, key, &value)) {
+                    obj.obj_decref();
+                    return InterpretResult::RuntimeError;
+                }
+                obj.obj_decref();
+                break;
+            }
+            case OP_SET: {
                 Value value = pop();
                 Value key = pop();
-                Value table = peek(0);
-                table.as_table()->set(key, value);
-                if (value.is_obj()) value.obj_decref();
+                Value obj = pop();
+                if (!set(obj, key, value)) {
+                    obj.obj_decref();
+                    return InterpretResult::RuntimeError;
+                }
+                push(value);
+                if (value.is_obj()) value.obj_incref();
+                break;
+            }
+            case OP_GET_NOPOP: {
+                Value key = pop();
+                Value obj = peek(0);
+                Value value;
+                if (!get(obj, key, &value)) {
+                    return InterpretResult::RuntimeError;
+                }
+                break;
+            }
+            case OP_SET_NOPOP: {
+                Value value = pop();
+                Value key = pop();
+                Value obj = peek(0);
+                if (!set(obj, key, value)) {
+                    return InterpretResult::RuntimeError;
+                }
+                break;
             }
         }
     }
@@ -276,4 +319,63 @@ InterpretResult VM::run() {
 #undef READ_CONSTANT
 #undef READ_STRING
 #undef BINARY_OP
+}
+
+bool VM::get(Value obj, Value key, Value* value) {
+    if (!obj.is_obj()) {
+        runtime_error("Cannot get field on a non-object type.");
+        return false;
+    }
+    if (obj.as_obj()->type == OBJ_ARRAY) {
+        if (!key.is_number()) {
+            runtime_error("Array index must be a number.");
+            if (key.is_obj()) key.obj_decref();
+            return false;
+        }
+        int32_t index = (int32_t)key.as_number();
+        ObjArray* array = obj.as_array();
+        bool found = array->get(index, value);
+        if (!found) {
+            runtime_error("Cannot subscript array of count {} with index {}.", array->count, index);
+            return false;
+        }
+        push(*value);
+        if (value->is_obj()) value->obj_incref();
+    }
+    else if (obj.as_obj()->type == OBJ_TABLE) {
+        bool found = obj.as_table()->get(key, value);
+        if (!found) {
+            runtime_error("Cannot find key {} in table.", key.to_std_string());
+            return false;
+        }
+        push(*value);
+        if (value->is_obj()) value->obj_incref();
+        if (key.is_obj()) key.obj_decref();
+    }
+    return true;
+}
+
+bool VM::set(Value obj, Value key, Value value) {
+    if (!obj.is_obj()) {
+        runtime_error("Cannot set field on a non-object type.");
+        return false;
+    }
+    if (obj.as_obj()->type == OBJ_ARRAY) {
+        if (!key.is_number()) {
+            runtime_error("Array index must be a number.");
+            if (key.is_obj()) key.obj_decref();
+            return false;
+        }
+        int32_t index = (int32_t)key.as_number();
+        ObjArray* array = obj.as_array();
+        bool success = array->set(index, value);
+        if (!success) {
+            runtime_error("Cannot subscript array of count {} with index {}.", array->count, index);
+            return false;
+        }
+    }
+    else if (obj.as_obj()->type == OBJ_TABLE) {
+        obj.as_table()->set(key, value);
+    }
+    return true;
 }
