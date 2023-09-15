@@ -25,10 +25,10 @@
     X(OP_DIVIDE)          \
     X(OP_NOT)             \
     X(OP_NEGATE)          \
-    X(OP_PRINT)           \
     X(OP_JUMP)            \
     X(OP_JUMP_IF_FALSE)   \
     X(OP_LOOP)            \
+    X(OP_CALL)            \
     X(OP_RETURN)          \
     X(OP_ARRAY_NEW)       \
     X(OP_TABLE_NEW)       \

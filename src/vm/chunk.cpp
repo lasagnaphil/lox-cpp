@@ -65,9 +65,7 @@ int32_t Chunk::disassemble_instruction(int32_t offset) const {
         case OP_MULTIPLY:
         case OP_DIVIDE:
         case OP_NEGATE:
-        case OP_PRINT:
         case OP_RETURN:
-        case OP_TABLE_NEW:
         case OP_GET:
         case OP_SET:
         case OP_GET_NOPOP:
@@ -75,6 +73,7 @@ int32_t Chunk::disassemble_instruction(int32_t offset) const {
             return print_simple_instruction((OpCode)instr, offset);
         case OP_GET_LOCAL:
         case OP_SET_LOCAL:
+        case OP_CALL:
             return print_byte_instruction((OpCode)instr, offset);
         case OP_JUMP:
         case OP_JUMP_IF_FALSE:
@@ -82,7 +81,8 @@ int32_t Chunk::disassemble_instruction(int32_t offset) const {
         case OP_LOOP:
             return print_jump_instruction((OpCode)instr, -1, offset);
         case OP_ARRAY_NEW:
-            return print_array_new_instruction(offset);
+        case OP_TABLE_NEW:
+            return print_object_new_instruction((OpCode)instr, offset);
         default:
             return print_simple_instruction(OP_INVALID, offset);
     }
@@ -98,7 +98,7 @@ int32_t Chunk::print_constant_instruction(OpCode opcode, int32_t offset) const {
     assert(opcode < OP_COUNT);
     uint8_t constant_loc = m_code[offset + 1];
     fmt::print("{:16s} {:4d} '", g_opcode_str[opcode], constant_loc);
-    fmt::print(m_constants[constant_loc].to_std_string());
+    puts(m_constants[constant_loc].to_std_string().c_str());
     fmt::print("'\n");
     return offset + 2;
 }
@@ -118,10 +118,10 @@ int32_t Chunk::print_jump_instruction(OpCode opcode, int32_t sign, int32_t offse
     return offset + 3;
 }
 
-int32_t Chunk::print_array_new_instruction(int32_t offset) const {
+int32_t Chunk::print_object_new_instruction(OpCode opcode, int32_t offset) const {
     uint16_t count = (uint16_t)(m_code[offset + 1] << 8);
     count |= m_code[offset + 2];
-    fmt::print("{:16s} {:4d}\n", g_opcode_str[OP_ARRAY_NEW], count);
+    fmt::print("{:16s} {:4d}\n", g_opcode_str[opcode], count);
     return offset + 3;
 }
 

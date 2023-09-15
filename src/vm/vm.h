@@ -1,8 +1,14 @@
 #include "vm/compiler.h"
 #include "vm/value.h"
 #include "vm/string.h"
+#include "vm/native_fun.h"
 #include "vm/string_interner.h"
 
+struct CallFrame {
+    ObjFunction* function;
+    uint8_t* ip;
+    Value* slots;
+};
 
 class VM {
 public:
@@ -15,13 +21,18 @@ public:
 
     InterpretResult interpret(const char* source);
 
-    bool compile(const char* source, Chunk* chunk);
+    ObjFunction* compile(const char* source);
+
+    void define_native(const char* name, NativeFun function);
 
 private:
+    void init_builtin_functions();
+
     InterpretResult run();
 
     void reset_stack() {
         m_stack_top = m_stack.data();
+        m_frame_count = 0;
     }
 
     void push(Value value) {
@@ -38,6 +49,9 @@ private:
         return m_stack_top[-1 - distance];
     }
 
+    bool call_value(Value callee, int32_t arg_count);
+    bool call(ObjFunction* function, int32_t arg_count);
+
     bool get(Value obj, Value key, Value* value);
     bool set(Value obj, Value key, Value value);
 
@@ -46,20 +60,36 @@ private:
         fmt::print(fmt, std::forward<Args>(args)...);
         fputs("\n", stderr);
 
-        size_t instr = m_ip - m_chunk->m_code.data() - 1;
-        int line = m_chunk->m_lines[instr];
+        for (int32_t i = m_frame_count - 1; i >= 0; i--) {
+            CallFrame* frame = &m_frames[i];
+            ObjFunction* function = frame->function;
+            size_t instruction = frame->ip - function->chunk.m_code.data() - 1;
+            fmt::print(stderr, "[line {}] in ",
+                       function->chunk.m_lines[instruction]);
+            if (function->name == nullptr) {
+                fmt::print(stderr, "script\n");
+            }
+            else {
+                fmt::print(stderr, "{}()\n", function->name->chars);
+            }
+        }
+
+        auto& frame = m_frames[m_frame_count - 1];
+        size_t instr = frame.ip - frame.function->chunk.m_code.data() - 1;
+        int line = frame.function->chunk.m_lines[instr];
         fmt::print(stderr, "[line {}] in script\n", line);
         reset_stack();
     }
 
-    static constexpr int32_t MaxStackSize = 256;
+    static constexpr int32_t MaxFrameSize = 64;
+    static constexpr int32_t MaxStackSize = MaxFrameSize * UINT8_COUNT;
 
-    Scanner m_scanner;
-    Compiler m_compiler;
-    Chunk* m_chunk = nullptr;
-    const uint8_t* m_ip = nullptr;
+    Array<CallFrame, MaxFrameSize> m_frames;
+    int32_t m_frame_count = 0;
+
     Array<Value, MaxStackSize> m_stack;
     Value* m_stack_top = nullptr;
+
     StringInterner m_string_interner;
     ObjTable m_globals;
 };

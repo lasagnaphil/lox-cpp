@@ -17,7 +17,8 @@ enum ObjType {
     OBJ_STRING,
     OBJ_ARRAY,
     OBJ_TABLE,
-    OBJ_FUNCTION
+    OBJ_FUNCTION,
+    OBJ_NATIVEFUN,
 };
 
 // https://en.wikipedia.org/wiki/Xorshift
@@ -44,6 +45,7 @@ struct ObjString;
 struct ObjArray;
 struct ObjTable;
 struct ObjFunction;
+struct ObjNativeFun;
 
 struct Value {
     ValueType type : 4;
@@ -65,6 +67,8 @@ struct Value {
     explicit Value(ObjString* str) : type(VAL_OBJ) { as.obj = reinterpret_cast<Obj*>(str); }
     explicit Value(ObjArray* arr) :  type(VAL_OBJ) { as.obj = reinterpret_cast<Obj*>(arr); }
     explicit Value(ObjTable* tbl) : type(VAL_OBJ) { as.obj = reinterpret_cast<Obj*>(tbl); }
+    explicit Value(ObjFunction* fn) : type(VAL_OBJ) { as.obj = reinterpret_cast<Obj*>(fn); }
+    explicit Value(ObjNativeFun* fn) : type(VAL_OBJ) { as.obj = reinterpret_cast<Obj*>(fn); }
 
     bool is_bool() const { return type == VAL_BOOL; }
     bool is_nil() const { return type == VAL_NIL; }
@@ -75,6 +79,7 @@ struct Value {
     bool is_array() const { return is_obj_type(OBJ_ARRAY); }
     bool is_table() const { return is_obj_type(OBJ_TABLE); }
     bool is_function() const { return is_obj_type(OBJ_FUNCTION); }
+    bool is_nativefun() const { return is_obj_type(OBJ_NATIVEFUN); }
 
     bool as_bool() const { return as.boolean; }
     double as_number() const { return as.number; }
@@ -83,10 +88,13 @@ struct Value {
     ObjArray* as_array() const { return reinterpret_cast<ObjArray*>(as.obj); }
     ObjTable* as_table() const { return reinterpret_cast<ObjTable*>(as.obj); }
     ObjFunction* as_function() const { return reinterpret_cast<ObjFunction*>(as.obj); }
+    ObjNativeFun* as_nativefun() const { return reinterpret_cast<ObjNativeFun*>(as.obj); }
 
     bool is_falsey() const {
         return is_nil() || (is_bool() && !as_bool());
     }
+
+    ObjType obj_type() { return as.obj->type; }
 
     void obj_incref() {
         as.obj->refcount++;

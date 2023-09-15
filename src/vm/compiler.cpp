@@ -5,7 +5,7 @@
 #include "vm/compiler.h"
 
 ParseRule Compiler::g_rules[] = {
-        [TOKEN_LEFT_PAREN]    = {&Compiler::grouping,   NULL,                   PREC_NONE},
+        [TOKEN_LEFT_PAREN]    = {&Compiler::grouping,   &Compiler::call,        PREC_CALL},
         [TOKEN_RIGHT_PAREN]   = {NULL,                  NULL,                   PREC_NONE},
         [TOKEN_LEFT_BRACE]    = {&Compiler::table,      NULL,                   PREC_NONE},
         [TOKEN_RIGHT_BRACE]   = {NULL,                  NULL,                   PREC_NONE},
@@ -40,7 +40,6 @@ ParseRule Compiler::g_rules[] = {
         [TOKEN_IF]            = {NULL,                  NULL,                   PREC_NONE},
         [TOKEN_NIL]           = {&Compiler::literal,    NULL,                   PREC_NONE},
         [TOKEN_OR]            = {NULL,                  &Compiler::or_,         PREC_OR},
-        [TOKEN_PRINT]         = {NULL,                  NULL,                   PREC_NONE},
         [TOKEN_RETURN]        = {NULL,                  NULL,                   PREC_NONE},
         [TOKEN_SUPER]         = {NULL,                  NULL,                   PREC_NONE},
         [TOKEN_THIS]          = {NULL,                  NULL,                   PREC_NONE},

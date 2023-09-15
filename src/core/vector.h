@@ -3,10 +3,11 @@
 #define MAX(a, b) (((a)>(b))? (a):(b))
 
 #include <type_traits>
-#include <cstring>
 #include <initializer_list>
+#include <cstring>
 
 #include "span.h"
+#include "log.h"
 
 template <class T>
 class Vector {
@@ -79,8 +80,14 @@ public:
     const T* end() const { return _data + _size; }
     T* end() { return _data + _size; }
 
-    const T& operator[](uint32_t i) const { return _data[i]; };
-    T& operator[](uint32_t i) { return _data[i]; }
+    const T& operator[](uint32_t i) const {
+        log_assert(i < _size);
+        return _data[i];
+    };
+    T& operator[](uint32_t i) {
+        log_assert(i < _size);
+        return _data[i];
+    }
 
     const T& front() const { return _data[0]; }
     T& front() { return _data[0]; }

@@ -1,38 +1,24 @@
 #include "vm/vm.h"
 
+#include "core/file.h"
 #include "vm/string.h"
 #include "vm/array.h"
 #include "vm/table.h"
+#include "vm/native_fun.h"
 
-VM::VM() : m_compiler(&m_scanner, &m_string_interner) {
+#include "fmt/args.h"
+
+VM::VM() {
     m_stack_top = m_stack.data();
     m_string_interner.init();
     m_globals.init();
+
+    init_builtin_functions();
 }
 
 VM::~VM() {
     m_string_interner.free();
     m_globals.clear();
-}
-
-inline bool read_file_to_buf(const char* path, Vector<char>& buf) {
-    FILE* file;
-    if (fopen_s(&file, path, "rb") != 0) {
-        return false;
-    }
-
-    fseek(file, 0L, SEEK_END);
-    size_t file_size = ftell(file);
-    rewind(file);
-
-    buf.resize(file_size + 1);
-    size_t bytes_read = fread(buf.data(), sizeof(char), file_size, file);
-    if (bytes_read < file_size) {
-        return false;
-    }
-
-    fclose(file);
-    return true;
 }
 
 void VM::repl() {
@@ -51,7 +37,7 @@ void VM::repl() {
 void VM::run_file(const char *path) {
     Vector<char> buf;
     if (!read_file_to_buf(path, buf)) {
-        fmt::print(stderr, "Cloud not open file \"%s\".\n", path);
+        fmt::print(stderr, "Could not open file \"%s\".\n", path);
         exit(74);
     }
     InterpretResult result = interpret(buf.data());
@@ -61,34 +47,64 @@ void VM::run_file(const char *path) {
 }
 
 InterpretResult VM::interpret(const char *source) {
-    Chunk chunk;
-    if (!compile(source, &chunk)) {
+    ObjFunction* fn = compile(source);
+    if (fn == nullptr) {
         return InterpretResult::CompileError;
     }
 
-    m_chunk = &chunk;
-    m_ip = m_chunk->m_code.data();
+    push(Value(fn));
+    call(fn, 0);
 
-    InterpretResult result = run();
-
-    m_chunk = nullptr;
-    m_ip = nullptr;
-
-    return result;
+    return run();
 }
 
-bool VM::compile(const char *source, Chunk *chunk) {
-    m_scanner.init(source);
-    m_compiler.reset_errors();
-    m_compiler.set_compiling_chunk(chunk);
-    m_compiler.compile();
-    return !m_compiler.had_error();
+ObjFunction* VM::compile(const char *source) {
+    Scanner scanner;
+    scanner.init(source);
+    Compiler compiler(&scanner, &m_string_interner);
+    compiler.init_script();
+    compiler.reset_errors();
+    return compiler.compile();
+}
+
+void VM::define_native(const char *name, NativeFun function) {
+    auto name_str = m_string_interner.create_string(name, (int32_t)strlen(name));
+    Value key = Value(name_str);
+    Value value = Value(create_obj_native_fun(function));
+    m_globals.set(key, value);
+}
+
+void VM::init_builtin_functions() {
+    define_native("clock", [](int32_t arg_count, Value* args) {
+        return Value((double)clock() / CLOCKS_PER_SEC);
+    });
+    define_native("print", [](int32_t arg_count, Value* args) {
+        if (arg_count == 0) return Value();
+        if (!args[0].is_string()) {
+            return Value(); // TODO: emit runtime error
+        }
+        auto fmt_str = args[0].as_string();
+        if (arg_count == 1) {
+            puts(fmt_str->chars);
+            putc('\n', stdout);
+        }
+        else {
+            auto store = fmt::dynamic_format_arg_store<fmt::format_context>();
+            for (int32_t i = 1; i < arg_count; i++) {
+                store.push_back(args[i].to_std_string());
+            }
+            fmt::vprint(fmt_str->chars, store);
+            putc('\n', stdout);
+        }
+        return Value();
+    });
 }
 
 InterpretResult VM::run() {
-#define READ_BYTE() (*m_ip++)
-#define READ_SHORT() (m_ip += 2, (uint16_t)((m_ip[-2] << 8) | m_ip[-1]))
-#define READ_CONSTANT() (m_chunk->m_constants[READ_BYTE()])
+    CallFrame* frame = &m_frames[m_frame_count - 1];
+#define READ_BYTE() (*frame->ip++)
+#define READ_SHORT() (frame->ip += 2, (uint16_t)((frame->ip[-2] << 8) | frame->ip[-1]))
+#define READ_CONSTANT() (frame->function->chunk.m_constants[READ_BYTE()])
 #define READ_STRING() READ_CONSTANT().as_string()
 #define BINARY_OP(op) \
     do {              \
@@ -111,7 +127,8 @@ InterpretResult VM::run() {
             fmt::print(" ]");
         }
         fmt::print("\n");
-        m_chunk->disassemble_instruction((int32_t)(m_ip - m_chunk->m_code.data()));
+        frame->function->chunk.disassemble_instruction(
+            (int32_t)(frame->ip - frame->function->chunk.m_code.data()));
 #endif
         uint8_t inst = READ_BYTE();
         switch (inst) {
@@ -126,7 +143,7 @@ InterpretResult VM::run() {
             case OP_POP: pop(); break;
             case OP_SET_LOCAL: {
                 uint8_t slot = READ_BYTE();
-                auto& val = m_stack[slot];
+                auto& val = frame->slots[slot];
                 if (val.is_obj()) val.obj_decref();
                 val = peek(0);
                 if (val.is_obj()) val.obj_incref();
@@ -134,7 +151,7 @@ InterpretResult VM::run() {
             }
             case OP_GET_LOCAL: {
                 uint8_t slot = READ_BYTE();
-                auto val = m_stack[slot];
+                auto val = frame->slots[slot];
                 push(val);
                 if (val.is_obj()) val.obj_incref();
                 break;
@@ -226,34 +243,44 @@ InterpretResult VM::run() {
                     return InterpretResult::RuntimeError;
                 }
                 push(Value(-pop().as_number()));
-            } break;
-            case OP_PRINT: {
-                Value value = pop();
-                std::string str = value.to_std_string();
-                fputs(str.c_str(), stdout);
-                if (value.is_obj()) value.obj_decref();
-                fmt::print("\n");
                 break;
             }
             case OP_JUMP: {
                 uint16_t offset = READ_SHORT();
-                m_ip += offset;
+                frame->ip += offset;
                 break;
             }
             case OP_JUMP_IF_FALSE: {
                 uint16_t offset = READ_SHORT();
-                if (peek(0).is_falsey()) m_ip += offset;
+                if (peek(0).is_falsey()) frame->ip += offset;
                 break;
             }
             case OP_LOOP: {
                 uint16_t offset = READ_SHORT();
-                m_ip -= offset;
+                frame->ip -= offset;
+                break;
+            }
+            case OP_CALL: {
+                int32_t arg_count = READ_BYTE();
+                Value fn_value = peek(arg_count);
+                if (!call_value(fn_value, arg_count)) {
+                    return InterpretResult::RuntimeError;
+                }
+                frame = &m_frames[m_frame_count - 1];
                 break;
             }
             case OP_RETURN: {
-                // print_value(pop());
-                // fmt::print("\n");
-                return InterpretResult::Ok;
+                Value result = pop();
+                m_frame_count--;
+                if (m_frame_count == 0) {
+                    pop();
+                    return InterpretResult::Ok;
+                }
+
+                m_stack_top = frame->slots;
+                push(result);
+                frame = &m_frames[m_frame_count - 1];
+                break;
             }
             case OP_TABLE_NEW: {
                 ObjTable* table = create_obj_table();
@@ -321,6 +348,41 @@ InterpretResult VM::run() {
 #undef BINARY_OP
 }
 
+bool VM::call_value(Value callee, int32_t arg_count) {
+    if (callee.is_obj()) {
+        switch (callee.obj_type()) {
+            case OBJ_FUNCTION:
+                return call(callee.as_function(), arg_count);
+            case OBJ_NATIVEFUN: {
+                auto native_fn = callee.as_nativefun()->function;
+                Value result = native_fn(arg_count, m_stack_top - arg_count);
+                m_stack_top -= arg_count + 1;
+                push(result);
+                return true;
+            }
+            default:
+                break;
+        }
+    }
+    runtime_error("Can only call functions and classes.");
+    return false;
+}
+
+bool VM::call(ObjFunction* function, int32_t arg_count) {
+    if (arg_count != function->arity) {
+        runtime_error("Expected {} arguments but got {}.", function->arity, arg_count);
+    }
+    if (m_frame_count == MaxFrameSize) {
+        runtime_error("Stack overflow.");
+        return false;
+    }
+    CallFrame* frame = &m_frames[m_frame_count++];
+    frame->function = function;
+    frame->ip = function->chunk.m_code.data();
+    frame->slots = m_stack_top - arg_count - 1;
+    return true;
+}
+
 bool VM::get(Value obj, Value key, Value* value) {
     if (!obj.is_obj()) {
         runtime_error("Cannot get field on a non-object type.");
@@ -379,3 +441,4 @@ bool VM::set(Value obj, Value key, Value value) {
     }
     return true;
 }
+

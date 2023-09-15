@@ -10,8 +10,8 @@
 
 #define UINT8_COUNT (UINT8_MAX + 1)
 
-#define DEBUG_PRINT_CODE
-#define DEBUG_TRACE_EXECUTION
+// #define DEBUG_PRINT_CODE
+// #define DEBUG_TRACE_EXECUTION
 
 enum class InterpretResult {
     Ok,
@@ -20,7 +20,7 @@ enum class InterpretResult {
 };
 
 enum class FunctionType {
-    FUnction, Script
+    Function, Script
 };
 
 enum Precedence : uint8_t {
@@ -59,27 +59,72 @@ public:
     Compiler(Scanner* scanner, StringInterner* string_interner)
     : m_scanner(scanner), m_string_interner(string_interner) {}
 
-    void init(FunctionType type) {
-        m_function = nullptr;
-        m_function_type = type;
+    void init_script() {
+        m_function = create_obj_function();
+        m_function_type = FunctionType::Script;
         m_local_count = 0;
         m_scope_depth = 0;
+
+        Local& local = m_locals[m_local_count++];
+        local.depth = 0;
+        local.name.start = "";
+        local.name.length = 0;
+    }
+
+    ObjFunction* compile_function(Compiler* enclosing) {
+        m_function = create_obj_function();
+        ObjString* fn_name = create_obj_string(enclosing->m_previous.start, enclosing->m_previous.length);
+        m_function->name = fn_name;
+        m_function_type = FunctionType::Function;
+
+        m_previous = enclosing->m_previous;
+        m_current = enclosing->m_current;
+        m_had_error = enclosing->m_had_error;
+        m_panic_mode = enclosing->m_panic_mode;
+
+        m_local_count = 0;
+        m_scope_depth = 0;
+
+        Local& local = m_locals[m_local_count++];
+        local.depth = 0;
+        local.name.start = "";
+        local.name.length = 0;
+
+        begin_scope();
+        consume(TOKEN_LEFT_PAREN, "Expect '(' after function name.");
+        if (!check(TOKEN_RIGHT_PAREN)) {
+            do {
+                m_function->arity++;
+                if (m_function->arity > 255) {
+                    error_at_current("Can't have more than 255 parameters.");
+                }
+                uint8_t constant = parse_variable("Expect parameter name.");
+                define_variable(constant);
+            } while (match(TOKEN_COMMA));
+        }
+        consume(TOKEN_RIGHT_PAREN, "Expect ')' after parameters.");
+        consume(TOKEN_LEFT_BRACE, "Expect '{' before function body.");
+        block();
+
+        enclosing->m_previous = m_previous;
+        enclosing->m_current = m_current;
+        enclosing->m_had_error = m_had_error;
+        enclosing->m_panic_mode = m_panic_mode;
+
+        return end();
     }
 
     Chunk* current_chunk() const {
         return &m_function->chunk;
     }
 
-    void set_compiling_chunk(Chunk* chunk) {
-        m_compiling_chunk = chunk;
-    }
-
-    void compile() {
+    ObjFunction* compile() {
         advance();
         while (!match(TOKEN_EOF)) {
             declaration();
         }
-        end();
+        ObjFunction* function = end();
+        return m_had_error? nullptr : function;
     }
 
     bool had_error() const { return m_had_error; }
@@ -159,6 +204,7 @@ public:
     }
 
     void emit_return() {
+        emit_byte(OP_NIL);
         emit_byte(OP_RETURN);
     }
 
@@ -175,13 +221,16 @@ public:
         emit_bytes(OP_CONSTANT, make_constant(value));
     }
 
-    void end() {
+    ObjFunction* end() {
         emit_return();
+        ObjFunction* function = m_function;
 #ifdef DEBUG_PRINT_CODE
         if (!m_had_error) {
-            current_chunk()->print_disassembly("code");
+            current_chunk()->print_disassembly(
+                function->name != nullptr ? function->name->chars : "<script>");
         }
 #endif
+        return function;
     }
 
     void begin_scope() {
@@ -210,6 +259,19 @@ public:
         consume(TOKEN_RIGHT_BRACE, "Expect '}' after block.");
     }
 
+    void function(FunctionType type) {
+        Compiler compiler(m_scanner, m_string_interner);
+        ObjFunction* function = compiler.compile_function(this);
+        emit_bytes(OP_CONSTANT, make_constant(Value(function)));
+    }
+
+    void fun_declaration() {
+        uint8_t global = parse_variable("Expect function name.");
+        mark_initialized();
+        function(FunctionType::Function);
+        define_variable(global);
+    }
+
     void var_declaration() {
         uint8_t global = parse_variable("Expect variable name.");
         if (match(TOKEN_EQUAL)) {
@@ -222,10 +284,18 @@ public:
         define_variable(global);
     }
 
-    void print_statement() {
-        expression();
-        consume(TOKEN_SEMICOLON, "Expect ';' after value.");
-        emit_byte(OP_PRINT);
+    void return_statement() {
+        if (m_function_type == FunctionType::Script) {
+            error("Can't return from top-level code.");
+        }
+        if (match(TOKEN_SEMICOLON)) {
+            emit_return();
+        }
+        else {
+            expression();
+            consume(TOKEN_SEMICOLON, "Expect ';' after return value.");
+            emit_byte(OP_RETURN);
+        }
     }
 
     void synchronize() {
@@ -239,7 +309,6 @@ public:
                 case TOKEN_VAR:
                 case TOKEN_IF:
                 case TOKEN_WHILE:
-                case TOKEN_PRINT:
                 case TOKEN_RETURN:
                     return;
 
@@ -338,6 +407,9 @@ public:
     }
 
     void declaration() {
+        if (match(TOKEN_FUN)) {
+            fun_declaration();
+        }
         if (match(TOKEN_VAR)) {
             var_declaration();
         }
@@ -349,14 +421,14 @@ public:
     }
 
     void statement() {
-        if (match(TOKEN_PRINT)) {
-            print_statement();
-        }
-        else if (match(TOKEN_FOR)) {
+        if (match(TOKEN_FOR)) {
             for_statement();
         }
         else if (match(TOKEN_IF)) {
             if_statement();
+        }
+        else if (match(TOKEN_RETURN)) {
+            return_statement();
         }
         else if (match(TOKEN_WHILE)) {
             while_statement();
@@ -365,6 +437,9 @@ public:
             begin_scope();
             block();
             end_scope();
+        }
+        else if (match(TOKEN_EOF)) {
+            // do nothing
         }
         else {
             expression_statement();
@@ -495,6 +570,11 @@ public:
         }
     }
 
+    void call(bool can_assign) {
+        uint8_t arg_count = argument_list();
+        emit_bytes(OP_CALL, arg_count);
+    }
+
     void literal(bool can_assign) {
         switch (m_previous.type) {
             case TOKEN_FALSE: emit_byte(OP_FALSE); break;
@@ -584,6 +664,7 @@ public:
     }
 
     void mark_initialized() {
+        if (m_scope_depth == 0) return;
         m_locals[m_local_count - 1].depth = m_scope_depth;
     }
 
@@ -594,6 +675,21 @@ public:
         }
 
         emit_bytes(OP_DEFINE_GLOBAL, global);
+    }
+
+    uint8_t argument_list() {
+        uint8_t arg_count = 0;
+        if (!check(TOKEN_RIGHT_PAREN)) {
+            do {
+                expression();
+                if (arg_count == 255) {
+                    error("Can't have more than 255 arguments.");
+                }
+                arg_count++;
+            } while (match(TOKEN_COMMA));
+        }
+        consume(TOKEN_RIGHT_PAREN, "Expect ')' after arguments.");
+        return arg_count;
     }
 
     void and_(bool can_assign) {
@@ -670,7 +766,6 @@ private:
     static ParseRule g_rules[];
 
     Scanner* m_scanner = nullptr;
-    Chunk* m_compiling_chunk = nullptr;
     Token m_current;
     Token m_previous;
     StringInterner* m_string_interner;

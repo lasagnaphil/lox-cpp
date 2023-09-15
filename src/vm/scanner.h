@@ -18,7 +18,7 @@ enum TokenType : uint8_t {
     // Keywords.
     TOKEN_AND, TOKEN_CLASS, TOKEN_ELSE, TOKEN_FALSE,
     TOKEN_FOR, TOKEN_FUN, TOKEN_IF, TOKEN_NIL, TOKEN_OR,
-    TOKEN_PRINT, TOKEN_RETURN, TOKEN_SUPER, TOKEN_THIS,
+    TOKEN_RETURN, TOKEN_SUPER, TOKEN_THIS,
     TOKEN_TRUE, TOKEN_VAR, TOKEN_WHILE,
 
     TOKEN_ERROR, TOKEN_EOF
@@ -183,7 +183,6 @@ public:
             case 'i': return check_keyword(1, 1, "f", TOKEN_IF);
             case 'n': return check_keyword(1, 2, "il", TOKEN_NIL);
             case 'o': return check_keyword(1, 1, "r", TOKEN_OR);
-            case 'p': return check_keyword(1, 4, "rint", TOKEN_PRINT);
             case 'r': return check_keyword(1, 5, "eturn", TOKEN_RETURN);
             case 's': return check_keyword(1, 4, "uper", TOKEN_SUPER);
             case 't':

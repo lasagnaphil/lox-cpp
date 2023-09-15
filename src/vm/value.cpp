@@ -4,6 +4,7 @@
 #include "vm/array.h"
 #include "vm/table.h"
 #include "vm/function.h"
+#include "vm/native_fun.h"
 
 #include <fmt/core.h>
 
@@ -23,6 +24,10 @@ void Value::obj_free() {
         }
         case OBJ_FUNCTION: {
             free_obj_function(reinterpret_cast<ObjFunction*>(as.obj));
+            break;
+        }
+        case OBJ_NATIVEFUN: {
+            free_obj_native_fun(reinterpret_cast<ObjNativeFun*>(as.obj));
             break;
         }
     }
@@ -120,7 +125,15 @@ std::string object_to_string(Value value) {
         }
         case OBJ_FUNCTION: {
             ObjFunction* fn = value.as_function();
-            fmt::format("<fn {}>", )
+            if (fn->name == nullptr) {
+                return "<script>";
+            }
+            else {
+                return fmt::format("<fn {}>", fn->name->chars);
+            }
+        }
+        case OBJ_NATIVEFUN: {
+            return "<native fn>";
         }
     }
 }
