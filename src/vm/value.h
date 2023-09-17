@@ -18,6 +18,7 @@ enum ObjType {
     OBJ_ARRAY,
     OBJ_TABLE,
     OBJ_FUNCTION,
+    OBJ_CLOSURE,
     OBJ_NATIVEFUN,
 };
 
@@ -45,6 +46,7 @@ struct ObjString;
 struct ObjArray;
 struct ObjTable;
 struct ObjFunction;
+struct ObjClosure;
 struct ObjNativeFun;
 
 struct Value {
@@ -68,6 +70,7 @@ struct Value {
     explicit Value(ObjArray* arr) :  type(VAL_OBJ) { as.obj = reinterpret_cast<Obj*>(arr); }
     explicit Value(ObjTable* tbl) : type(VAL_OBJ) { as.obj = reinterpret_cast<Obj*>(tbl); }
     explicit Value(ObjFunction* fn) : type(VAL_OBJ) { as.obj = reinterpret_cast<Obj*>(fn); }
+    explicit Value(ObjClosure* cs) : type(VAL_OBJ) { as.obj = reinterpret_cast<Obj*>(cs); }
     explicit Value(ObjNativeFun* fn) : type(VAL_OBJ) { as.obj = reinterpret_cast<Obj*>(fn); }
 
     bool is_bool() const { return type == VAL_BOOL; }
@@ -79,6 +82,7 @@ struct Value {
     bool is_array() const { return is_obj_type(OBJ_ARRAY); }
     bool is_table() const { return is_obj_type(OBJ_TABLE); }
     bool is_function() const { return is_obj_type(OBJ_FUNCTION); }
+    bool is_closure() const { return is_obj_type(OBJ_CLOSURE); }
     bool is_nativefun() const { return is_obj_type(OBJ_NATIVEFUN); }
 
     bool as_bool() const { return as.boolean; }
@@ -88,6 +92,7 @@ struct Value {
     ObjArray* as_array() const { return reinterpret_cast<ObjArray*>(as.obj); }
     ObjTable* as_table() const { return reinterpret_cast<ObjTable*>(as.obj); }
     ObjFunction* as_function() const { return reinterpret_cast<ObjFunction*>(as.obj); }
+    ObjClosure* as_closure() const { return reinterpret_cast<ObjClosure*>(as.obj); }
     ObjNativeFun* as_nativefun() const { return reinterpret_cast<ObjNativeFun*>(as.obj); }
 
     bool is_falsey() const {
