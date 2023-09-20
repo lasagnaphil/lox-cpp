@@ -4,7 +4,6 @@
 #include "vm/string.h"
 #include "vm/array.h"
 #include "vm/table.h"
-#include "vm/native_fun.h"
 
 #include "fmt/args.h"
 
@@ -52,16 +51,18 @@ InterpretResult VM::interpret(const char *source) {
         return InterpretResult::CompileError;
     }
 
-    push(Value(fn));
-    call(fn, 0);
+    ObjClosure* closure = create_obj_closure(fn);
+    push(Value(closure));
+    call(closure, 0);
 
-    return run();
+    // return run();
+    return InterpretResult::Ok;
 }
 
 ObjFunction* VM::compile(const char *source) {
-    Scanner scanner;
-    scanner.init(source);
-    Compiler compiler(&scanner, &m_string_interner);
+    Parser parser;
+    parser.init(source);
+    Compiler compiler(&parser, &m_string_interner);
     compiler.init_script();
     compiler.reset_errors();
     return compiler.compile();
@@ -104,7 +105,7 @@ InterpretResult VM::run() {
     CallFrame* frame = &m_frames[m_frame_count - 1];
 #define READ_BYTE() (*frame->ip++)
 #define READ_SHORT() (frame->ip += 2, (uint16_t)((frame->ip[-2] << 8) | frame->ip[-1]))
-#define READ_CONSTANT() (frame->function->chunk.m_constants[READ_BYTE()])
+#define READ_CONSTANT() (frame->closure->function->chunk.m_constants[READ_BYTE()])
 #define READ_STRING() READ_CONSTANT().as_string()
 #define BINARY_OP(op) \
     do {              \
@@ -127,8 +128,8 @@ InterpretResult VM::run() {
             fmt::print(" ]");
         }
         fmt::print("\n");
-        frame->function->chunk.disassemble_instruction(
-            (int32_t)(frame->ip - frame->function->chunk.m_code.data()));
+        frame->closure->function->chunk.disassemble_instruction(
+            (int32_t)(frame->ip - frame->closure->function->chunk.m_code.data()));
 #endif
         uint8_t inst = READ_BYTE();
         switch (inst) {
@@ -184,6 +185,16 @@ InterpretResult VM::run() {
                     runtime_error("Undefined variable '{}'.", name->chars);
                     return InterpretResult::RuntimeError;
                 }
+                break;
+            }
+            case OP_GET_UPVALUE: {
+                uint8_t slot = READ_BYTE();
+                push(*frame->closure->upvalues[slot]->location);
+                break;
+            }
+            case OP_SET_UPVALUE: {
+                uint8_t slot = READ_BYTE();
+                *frame->closure->upvalues[slot]->location = peek(0);
                 break;
             }
             case OP_EQUAL: {
@@ -269,6 +280,22 @@ InterpretResult VM::run() {
                 frame = &m_frames[m_frame_count - 1];
                 break;
             }
+            case OP_CLOSURE: {
+                ObjFunction* function = READ_CONSTANT().as_function();
+                ObjClosure* closure = create_obj_closure(function);
+                push(Value(closure));
+                for (int32_t i = 0; i < closure->upvalue_count; i++) {
+                    uint8_t is_local = READ_BYTE();
+                    uint8_t index = READ_BYTE();
+                    if (is_local) {
+                        closure->upvalues[i] = capture_upvalue(frame->slots + index);
+                    }
+                    else {
+                        closure->upvalues[i] = frame->closure->upvalues[index];
+                    }
+                }
+                break;
+            }
             case OP_RETURN: {
                 Value result = pop();
                 m_frame_count--;
@@ -351,8 +378,8 @@ InterpretResult VM::run() {
 bool VM::call_value(Value callee, int32_t arg_count) {
     if (callee.is_obj()) {
         switch (callee.obj_type()) {
-            case OBJ_FUNCTION:
-                return call(callee.as_function(), arg_count);
+            case OBJ_CLOSURE:
+                return call(callee.as_closure(), arg_count);
             case OBJ_NATIVEFUN: {
                 auto native_fn = callee.as_nativefun()->function;
                 Value result = native_fn(arg_count, m_stack_top - arg_count);
@@ -368,19 +395,24 @@ bool VM::call_value(Value callee, int32_t arg_count) {
     return false;
 }
 
-bool VM::call(ObjFunction* function, int32_t arg_count) {
-    if (arg_count != function->arity) {
-        runtime_error("Expected {} arguments but got {}.", function->arity, arg_count);
+bool VM::call(ObjClosure* closure, int32_t arg_count) {
+    if (arg_count != closure->function->arity) {
+        runtime_error("Expected {} arguments but got {}.", closure->function->arity, arg_count);
     }
     if (m_frame_count == MaxFrameSize) {
         runtime_error("Stack overflow.");
         return false;
     }
     CallFrame* frame = &m_frames[m_frame_count++];
-    frame->function = function;
-    frame->ip = function->chunk.m_code.data();
+    frame->closure = closure;
+    frame->ip = closure->function->chunk.m_code.data();
     frame->slots = m_stack_top - arg_count - 1;
     return true;
+}
+
+ObjUpvalue *VM::capture_upvalue(Value *local) {
+    ObjUpvalue* created_upvalue = create_obj_upvalue(local);
+    return created_upvalue;
 }
 
 bool VM::get(Value obj, Value key, Value* value) {

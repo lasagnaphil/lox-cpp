@@ -1,5 +1,6 @@
 #include "vm/chunk.h"
 #include "vm/table.h"
+#include "vm/function.h"
 
 #include <string>
 
@@ -73,8 +74,25 @@ int32_t Chunk::disassemble_instruction(int32_t offset) const {
             return print_simple_instruction((OpCode)instr, offset);
         case OP_GET_LOCAL:
         case OP_SET_LOCAL:
+        case OP_GET_UPVALUE:
+        case OP_SET_UPVALUE:
         case OP_CALL:
             return print_byte_instruction((OpCode)instr, offset);
+        case OP_CLOSURE: {
+            offset++;
+            uint8_t constant = m_code[offset++];
+            fmt::print("{:<16s} {:4d} ", "OP_CLOSURE", constant);
+            fmt::print(m_constants[constant].to_std_string());
+            fmt::print("\n");
+
+            ObjFunction* function = m_constants[constant].as_function();
+            for (int32_t j = 0; j < function->upvalue_count; j++) {
+                int32_t is_local = m_code[offset++];
+                int32_t index = m_code[offset++];
+                fmt::print("{:04d}      |                     {} {}\n", offset - 2, is_local ? "local" : "upvalue", index);
+            }
+            return offset;
+        }
         case OP_JUMP:
         case OP_JUMP_IF_FALSE:
             return print_jump_instruction((OpCode)instr, 1, offset);
@@ -97,8 +115,8 @@ int32_t Chunk::print_simple_instruction(OpCode opcode, int32_t offset) const {
 int32_t Chunk::print_constant_instruction(OpCode opcode, int32_t offset) const {
     assert(opcode < OP_COUNT);
     uint8_t constant_loc = m_code[offset + 1];
-    fmt::print("{:16s} {:4d} '", g_opcode_str[opcode], constant_loc);
-    puts(m_constants[constant_loc].to_std_string().c_str());
+    fmt::print("{:<16s} {:4d} '", g_opcode_str[opcode], constant_loc);
+    fputs(m_constants[constant_loc].to_std_string().c_str(), stdout);
     fmt::print("'\n");
     return offset + 2;
 }
@@ -106,7 +124,7 @@ int32_t Chunk::print_constant_instruction(OpCode opcode, int32_t offset) const {
 int32_t Chunk::print_byte_instruction(OpCode opcode, int32_t offset) const {
     assert(opcode < OP_COUNT);
     uint8_t slot = m_code[offset + 1];
-    fmt::print("{:16s} {:4d}\n", g_opcode_str[opcode], slot);
+    fmt::print("{:<16s} {:4d}\n", g_opcode_str[opcode], slot);
     return offset + 2;
 }
 
@@ -114,14 +132,14 @@ int32_t Chunk::print_jump_instruction(OpCode opcode, int32_t sign, int32_t offse
     assert(opcode < OP_COUNT);
     uint16_t jump = (uint16_t)(m_code[offset + 1] << 8);
     jump |= m_code[offset + 2];
-    fmt::print("{:16s} {:4d} -> {:d}\n", g_opcode_str[opcode], offset, offset + 3 + sign * jump);
+    fmt::print("{:<16s} {:4d} -> {:d}\n", g_opcode_str[opcode], offset, offset + 3 + sign * jump);
     return offset + 3;
 }
 
 int32_t Chunk::print_object_new_instruction(OpCode opcode, int32_t offset) const {
     uint16_t count = (uint16_t)(m_code[offset + 1] << 8);
     count |= m_code[offset + 2];
-    fmt::print("{:16s} {:4d}\n", g_opcode_str[opcode], count);
+    fmt::print("{:<16s} {:4d}\n", g_opcode_str[opcode], count);
     return offset + 3;
 }
 

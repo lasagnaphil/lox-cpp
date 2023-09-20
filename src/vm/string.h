@@ -3,12 +3,10 @@
 #include "vm/value.h"
 
 struct ObjString {
-    Obj obj;
+    Obj obj = OBJ_STRING;
     int32_t length;
     uint32_t hash;
     char chars[];
-
-    ObjString() : obj(OBJ_STRING) {}
 };
 
 uint32_t hash_string(const char *key, int32_t length);

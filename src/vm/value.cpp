@@ -4,7 +4,6 @@
 #include "vm/array.h"
 #include "vm/table.h"
 #include "vm/function.h"
-#include "vm/native_fun.h"
 
 #include <fmt/core.h>
 
@@ -91,6 +90,9 @@ std::string value_to_string(Value value) {
 std::string object_to_string(Value value) {
     switch (value.as.obj->type) {
         case OBJ_STRING: return value.as_string()->chars;
+        case OBJ_UPVALUE: {
+            return "upvalue";
+        }
         case OBJ_ARRAY: {
             std::string str = "[ ";
             ObjArray* array = value.as_array();
@@ -125,6 +127,15 @@ std::string object_to_string(Value value) {
         }
         case OBJ_FUNCTION: {
             ObjFunction* fn = value.as_function();
+            if (fn->name == nullptr) {
+                return "<script>";
+            }
+            else {
+                return fmt::format("<fn {}>", fn->name->chars);
+            }
+        }
+        case OBJ_CLOSURE: {
+            ObjFunction* fn = value.as_closure()->function;
             if (fn->name == nullptr) {
                 return "<script>";
             }

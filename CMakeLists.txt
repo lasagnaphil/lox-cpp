@@ -15,8 +15,6 @@ set(LOX_SRCS
         src/vm/array.cpp
         src/vm/table.cpp
         src/vm/function.cpp
-        src/vm/closure.cpp
-        src/vm/native_fun.cpp
         src/vm/string_interner.cpp
         src/main.cpp
 )

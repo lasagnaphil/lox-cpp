@@ -8,12 +8,10 @@ struct Entry {
 };
 
 struct ObjTable {
-    Obj obj;
+    Obj obj = OBJ_TABLE;
     int32_t count;
     int32_t capacity;
     Entry* entries;
-
-    ObjTable() : obj(OBJ_TABLE) {}
 
     void init();
     void clear();

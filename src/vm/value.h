@@ -15,6 +15,7 @@ enum ValueType {
 
 enum ObjType {
     OBJ_STRING,
+    OBJ_UPVALUE,
     OBJ_ARRAY,
     OBJ_TABLE,
     OBJ_FUNCTION,

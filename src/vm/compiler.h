@@ -1,7 +1,7 @@
 #pragma once
 
 #include "vm/chunk.h"
-#include "vm/scanner.h"
+#include "vm/parser.h"
 #include "vm/string_interner.h"
 #include "vm/table.h"
 #include "vm/function.h"
@@ -10,8 +10,8 @@
 
 #define UINT8_COUNT (UINT8_MAX + 1)
 
-// #define DEBUG_PRINT_CODE
-// #define DEBUG_TRACE_EXECUTION
+#define DEBUG_PRINT_CODE
+#define DEBUG_TRACE_EXECUTION
 
 enum class InterpretResult {
     Ok,
@@ -52,12 +52,17 @@ struct Local {
     int32_t depth;
 };
 
+struct Upvalue {
+    uint8_t index;
+    bool is_local;
+};
+
 #define MEMBER_FN(object,ptrToMember)  ((object).*(ptrToMember))
 
 class Compiler {
 public:
-    Compiler(Scanner* scanner, StringInterner* string_interner)
-    : m_scanner(scanner), m_string_interner(string_interner) {}
+    Compiler(Parser* parser, StringInterner* string_interner)
+    : m_parser(parser), m_string_interner(string_interner) {}
 
     void init_script() {
         m_function = create_obj_function();
@@ -73,14 +78,11 @@ public:
 
     ObjFunction* compile_function(Compiler* enclosing) {
         m_function = create_obj_function();
-        ObjString* fn_name = create_obj_string(enclosing->m_previous.start, enclosing->m_previous.length);
+        ObjString* fn_name = create_obj_string(m_parser->previous().start, m_parser->previous().length);
         m_function->name = fn_name;
         m_function_type = FunctionType::Function;
 
-        m_previous = enclosing->m_previous;
-        m_current = enclosing->m_current;
-        m_had_error = enclosing->m_had_error;
-        m_panic_mode = enclosing->m_panic_mode;
+        m_enclosing = enclosing;
 
         m_local_count = 0;
         m_scope_depth = 0;
@@ -91,25 +93,22 @@ public:
         local.name.length = 0;
 
         begin_scope();
-        consume(TOKEN_LEFT_PAREN, "Expect '(' after function name.");
-        if (!check(TOKEN_RIGHT_PAREN)) {
+        m_parser->consume(TOKEN_LEFT_PAREN, "Expect '(' after function name.");
+        if (!m_parser->check(TOKEN_RIGHT_PAREN)) {
             do {
                 m_function->arity++;
                 if (m_function->arity > 255) {
-                    error_at_current("Can't have more than 255 parameters.");
+                    m_parser->error_at_current("Can't have more than 255 parameters.");
                 }
                 uint8_t constant = parse_variable("Expect parameter name.");
                 define_variable(constant);
-            } while (match(TOKEN_COMMA));
+            } while (m_parser->match(TOKEN_COMMA));
         }
-        consume(TOKEN_RIGHT_PAREN, "Expect ')' after parameters.");
-        consume(TOKEN_LEFT_BRACE, "Expect '{' before function body.");
+        m_parser->consume(TOKEN_RIGHT_PAREN, "Expect ')' after parameters.");
+        m_parser->consume(TOKEN_LEFT_BRACE, "Expect '{' before function body.");
         block();
 
-        enclosing->m_previous = m_previous;
-        enclosing->m_current = m_current;
-        enclosing->m_had_error = m_had_error;
-        enclosing->m_panic_mode = m_panic_mode;
+        m_enclosing = nullptr;
 
         return end();
     }
@@ -119,45 +118,16 @@ public:
     }
 
     ObjFunction* compile() {
-        advance();
-        while (!match(TOKEN_EOF)) {
+        m_parser->advance();
+        while (!m_parser->match(TOKEN_EOF)) {
             declaration();
         }
         ObjFunction* function = end();
-        return m_had_error? nullptr : function;
-    }
-
-    bool had_error() const { return m_had_error; }
-    void advance() {
-        m_previous = m_current;
-        for (;;) {
-            m_current = m_scanner->scan_token();
-            if (m_current.type != TOKEN_ERROR) break;
-
-            error_at_current(m_current.start);
-        }
-    }
-
-    void consume(TokenType type, const char* message) {
-        if (m_current.type == type) {
-            advance();
-            return;
-        }
-        error_at_current(message);
-    }
-
-    bool check(TokenType type) const {
-        return m_current.type == type;
-    }
-
-    bool match(TokenType type) {
-        if (!check(type)) return false;
-        advance();
-        return true;
+        return m_parser->had_error()? nullptr : function;
     }
 
     void emit_byte(uint8_t byte) {
-        current_chunk()->write(byte, m_previous.line);
+        current_chunk()->write(byte, m_parser->previous().line);
     }
 
     void emit_bytes(uint8_t byte1, uint8_t byte2) {
@@ -169,7 +139,7 @@ public:
         emit_byte(OP_LOOP);
 
         int32_t offset = current_chunk()->code_count() - loop_start + 2;
-        if (offset > UINT16_MAX) error("Loop body too large.");
+        if (offset > UINT16_MAX) m_parser->error("Loop body too large.");
 
         emit_byte((offset >> 8) & 0xff);
         emit_byte(offset & 0xff);
@@ -185,7 +155,7 @@ public:
     void patch_jump(int32_t offset) {
         int32_t jump = current_chunk()->m_code.ssize() - offset - 2;
         if (jump > UINT16_MAX) {
-            error("Too much code to jump over.");
+            m_parser->error("Too much code to jump over.");
         }
         current_chunk()->m_code[offset] = (jump >> 8) & 0xff;
         current_chunk()->m_code[offset + 1] = jump & 0xff;
@@ -211,7 +181,7 @@ public:
     uint8_t make_constant(Value value) {
         int32_t constant = current_chunk()->add_constant(value);
         if (constant > UINT8_MAX) {
-            error("Too many constants in one chunk.");
+            m_parser->error("Too many constants in one chunk.");
             return 0;
         }
         return (uint8_t) constant;
@@ -225,7 +195,7 @@ public:
         emit_return();
         ObjFunction* function = m_function;
 #ifdef DEBUG_PRINT_CODE
-        if (!m_had_error) {
+        if (!m_parser->had_error()) {
             current_chunk()->print_disassembly(
                 function->name != nullptr ? function->name->chars : "<script>");
         }
@@ -252,17 +222,23 @@ public:
     }
 
     void block() {
-        while (!check(TOKEN_RIGHT_BRACE) && !check(TOKEN_EOF)) {
+        while (!m_parser->check(TOKEN_RIGHT_BRACE) && !m_parser->check(TOKEN_EOF)) {
             declaration();
         }
 
-        consume(TOKEN_RIGHT_BRACE, "Expect '}' after block.");
+        m_parser->consume(TOKEN_RIGHT_BRACE, "Expect '}' after block.");
     }
 
     void function(FunctionType type) {
-        Compiler compiler(m_scanner, m_string_interner);
+        Compiler compiler(m_parser, m_string_interner);
         ObjFunction* function = compiler.compile_function(this);
-        emit_bytes(OP_CONSTANT, make_constant(Value(function)));
+        Value val_fn = Value(function);
+        emit_bytes(OP_CLOSURE, make_constant(val_fn));
+
+        for (int32_t i = 0; i < function->upvalue_count; i++) {
+            emit_byte(m_upvalues[i].is_local ? 1 : 0);
+            emit_byte(m_upvalues[i].index);
+        }
     }
 
     void fun_declaration() {
@@ -274,65 +250,44 @@ public:
 
     void var_declaration() {
         uint8_t global = parse_variable("Expect variable name.");
-        if (match(TOKEN_EQUAL)) {
+        if (m_parser->match(TOKEN_EQUAL)) {
             expression();
         }
         else {
             emit_byte(OP_NIL);
         }
-        consume(TOKEN_SEMICOLON, "Expect ';' after variable declaration.");
+        m_parser->consume(TOKEN_SEMICOLON, "Expect ';' after variable declaration.");
         define_variable(global);
     }
 
     void return_statement() {
         if (m_function_type == FunctionType::Script) {
-            error("Can't return from top-level code.");
+            m_parser->error("Can't return from top-level code.");
         }
-        if (match(TOKEN_SEMICOLON)) {
+        if (m_parser->match(TOKEN_SEMICOLON)) {
             emit_return();
         }
         else {
             expression();
-            consume(TOKEN_SEMICOLON, "Expect ';' after return value.");
+            m_parser->consume(TOKEN_SEMICOLON, "Expect ';' after return value.");
             emit_byte(OP_RETURN);
-        }
-    }
-
-    void synchronize() {
-        m_panic_mode = false;
-
-        while (m_current.type != TOKEN_EOF) {
-            if (m_previous.type == TOKEN_SEMICOLON) return;
-            switch (m_current.type) {;
-                case TOKEN_CLASS:
-                case TOKEN_FUN:
-                case TOKEN_VAR:
-                case TOKEN_IF:
-                case TOKEN_WHILE:
-                case TOKEN_RETURN:
-                    return;
-
-                default:
-                    ;
-            }
-            advance();
         }
     }
 
     void expression_statement() {
         expression();
-        consume(TOKEN_SEMICOLON, "Expect ';' after expression.");
+        m_parser->consume(TOKEN_SEMICOLON, "Expect ';' after expression.");
         emit_byte(OP_POP);
     }
 
     void for_statement() {
         begin_scope();
-        consume(TOKEN_LEFT_PAREN, "Expect '(' after 'for'.");
+        m_parser->consume(TOKEN_LEFT_PAREN, "Expect '(' after 'for'.");
         // intializer clause
-        if (match(TOKEN_SEMICOLON)) {
+        if (m_parser->match(TOKEN_SEMICOLON)) {
             // No initializer.
         }
-        else if (match(TOKEN_VAR)) {
+        else if (m_parser->match(TOKEN_VAR)) {
             var_declaration();
         }
         else {
@@ -341,21 +296,21 @@ public:
 
         int32_t loop_start = current_chunk()->code_count();
         int32_t exit_jump = -1;
-        if (!match(TOKEN_SEMICOLON)) {
+        if (!m_parser->match(TOKEN_SEMICOLON)) {
             expression(); // condition expression
-            consume(TOKEN_SEMICOLON, "Expect ';' after loop condition.");
+            m_parser->consume(TOKEN_SEMICOLON, "Expect ';' after loop condition.");
 
             // Jump out of the loop if the condition is false.
             exit_jump = emit_jump(OP_JUMP_IF_FALSE);
             emit_byte(OP_POP);
         }
 
-        if (!match(TOKEN_RIGHT_PAREN)) {
+        if (!m_parser->match(TOKEN_RIGHT_PAREN)) {
             int32_t body_jump = emit_jump(OP_JUMP);
             int32_t increment_start = current_chunk()->code_count();
             expression(); // increment expression
             emit_byte(OP_POP);
-            consume(TOKEN_RIGHT_PAREN, "Expect ')' after for clauses.");
+            m_parser->consume(TOKEN_RIGHT_PAREN, "Expect ')' after for clauses.");
 
             emit_loop(loop_start);
             loop_start = increment_start;
@@ -374,9 +329,9 @@ public:
     }
 
     void if_statement() {
-        consume(TOKEN_LEFT_PAREN, "Expect '(' after 'if'.");
+        m_parser->consume(TOKEN_LEFT_PAREN, "Expect '(' after 'if'.");
         expression();
-        consume(TOKEN_RIGHT_PAREN, "Expect ')' after condition.");
+        m_parser->consume(TOKEN_RIGHT_PAREN, "Expect ')' after condition.");
 
         int32_t then_jump = emit_jump(OP_JUMP_IF_FALSE);
         emit_byte(OP_POP);
@@ -387,15 +342,15 @@ public:
         patch_jump(then_jump);
         emit_byte(OP_POP);
 
-        if (match(TOKEN_ELSE)) statement();
+        if (m_parser->match(TOKEN_ELSE)) statement();
         patch_jump(else_jump);
     }
 
     void while_statement() {
         int32_t loop_start = current_chunk()->code_count();
-        consume(TOKEN_LEFT_PAREN, "Expect '(' after 'while'.");
+        m_parser->consume(TOKEN_LEFT_PAREN, "Expect '(' after 'while'.");
         expression();
-        consume(TOKEN_RIGHT_PAREN, "Expect ')' after condition.");
+        m_parser->consume(TOKEN_RIGHT_PAREN, "Expect ')' after condition.");
 
         int32_t exit_jump = emit_jump(OP_JUMP_IF_FALSE);
         emit_byte(OP_POP);
@@ -407,38 +362,38 @@ public:
     }
 
     void declaration() {
-        if (match(TOKEN_FUN)) {
+        if (m_parser->match(TOKEN_FUN)) {
             fun_declaration();
         }
-        if (match(TOKEN_VAR)) {
+        if (m_parser->match(TOKEN_VAR)) {
             var_declaration();
         }
         else {
             statement();
         }
 
-        if (m_panic_mode) synchronize();
+        if (m_parser->panic_mode()) m_parser->synchronize();
     }
 
     void statement() {
-        if (match(TOKEN_FOR)) {
+        if (m_parser->match(TOKEN_FOR)) {
             for_statement();
         }
-        else if (match(TOKEN_IF)) {
+        else if (m_parser->match(TOKEN_IF)) {
             if_statement();
         }
-        else if (match(TOKEN_RETURN)) {
+        else if (m_parser->match(TOKEN_RETURN)) {
             return_statement();
         }
-        else if (match(TOKEN_WHILE)) {
+        else if (m_parser->match(TOKEN_WHILE)) {
             while_statement();
         }
-        else if (match(TOKEN_LEFT_BRACE)) {
+        else if (m_parser->match(TOKEN_LEFT_BRACE)) {
             begin_scope();
             block();
             end_scope();
         }
-        else if (match(TOKEN_EOF)) {
+        else if (m_parser->match(TOKEN_EOF)) {
             // do nothing
         }
         else {
@@ -448,16 +403,16 @@ public:
 
     void grouping(bool can_assign) {
         expression();
-        consume(TOKEN_RIGHT_PAREN, "Expect ')' after expression.");
+        m_parser->consume(TOKEN_RIGHT_PAREN, "Expect ')' after expression.");
     }
 
     void number(bool can_assign) {
-        double value = strtod(m_previous.start, nullptr);
+        double value = strtod(m_parser->previous().start, nullptr);
         emit_constant(Value(value));
     }
 
     void string(bool can_assign) {
-        ObjString* str = m_string_interner->create_string(m_previous.start + 1, m_previous.length - 2);
+        ObjString* str = m_string_interner->create_string(m_parser->previous().start + 1, m_parser->previous().length - 2);
         auto value = Value(str);
         value.obj_incref();
         emit_constant(value);
@@ -466,22 +421,22 @@ public:
     void table(bool can_assign) {
         emit_byte(OP_TABLE_NEW);
 
-        while (match(TOKEN_IDENTIFIER)) {
-            ObjString* str = m_string_interner->create_string(m_previous.start, m_previous.length);
+        while (m_parser->match(TOKEN_IDENTIFIER)) {
+            ObjString* str = m_string_interner->create_string(m_parser->previous().start, m_parser->previous().length);
             auto key = Value(str);
             key.obj_incref();
             emit_constant(key);
 
-            consume(TOKEN_EQUAL, "Expect '=' after identifier in table initializer list.");
+            m_parser->consume(TOKEN_EQUAL, "Expect '=' after identifier in table initializer list.");
 
             expression();
 
             emit_byte(OP_SET_NOPOP);
 
-            if (!match(TOKEN_COMMA)) break;
+            if (!m_parser->match(TOKEN_COMMA)) break;
         }
 
-        consume(TOKEN_RIGHT_BRACE, "Expect '}' after table initializer list.");
+        m_parser->consume(TOKEN_RIGHT_BRACE, "Expect '}' after table initializer list.");
     }
 
     void array(bool can_assign) {
@@ -493,17 +448,17 @@ public:
             expression();
             emit_byte(OP_SET_NOPOP);
             index++;
-            if (!match(TOKEN_COMMA)) break;
+            if (!m_parser->match(TOKEN_COMMA)) break;
         }
 
         patch_array_new(array_size_offset, index);
-        consume(TOKEN_RIGHT_BRACKET, "Expect ']' after array initializer list.");
+        m_parser->consume(TOKEN_RIGHT_BRACKET, "Expect ']' after array initializer list.");
     }
 
     void subscript(bool can_assign) {
         expression();
-        consume(TOKEN_RIGHT_BRACKET, "Expect ']' after expression.");
-        if (can_assign && match(TOKEN_EQUAL)) {
+        m_parser->consume(TOKEN_RIGHT_BRACKET, "Expect ']' after expression.");
+        if (can_assign && m_parser->match(TOKEN_EQUAL)) {
             expression();
             emit_byte(OP_SET);
         }
@@ -519,13 +474,17 @@ public:
             get_op = OP_GET_LOCAL;
             set_op = OP_SET_LOCAL;
         }
+        else if ((arg = resolve_upvalue(name)) != -1) {
+            get_op = OP_GET_UPVALUE;
+            set_op = OP_SET_UPVALUE;
+        }
         else {
             arg = identifier_constant(name);
             get_op = OP_GET_GLOBAL;
             set_op = OP_SET_GLOBAL;
         }
 
-        if (can_assign && match(TOKEN_EQUAL)) {
+        if (can_assign && m_parser->match(TOKEN_EQUAL)) {
             expression();
             emit_bytes(set_op, arg);
         }
@@ -535,11 +494,11 @@ public:
     }
 
     void variable(bool can_assign) {
-        named_variable(m_previous, can_assign);
+        named_variable(m_parser->previous(), can_assign);
     }
 
     void unary(bool can_assign) {
-        TokenType op_type = m_previous.type;
+        TokenType op_type = m_parser->previous().type;
 
         parse_precedence(PREC_UNARY);
 
@@ -551,7 +510,7 @@ public:
     }
 
     void binary(bool can_assign) {
-        TokenType op_type = m_previous.type;
+        TokenType op_type = m_parser->previous().type;
         ParseRule rule = get_rule(op_type);
         parse_precedence((Precedence)(rule.precedence + 1));
 
@@ -576,7 +535,7 @@ public:
     }
 
     void literal(bool can_assign) {
-        switch (m_previous.type) {
+        switch (m_parser->previous().type) {
             case TOKEN_FALSE: emit_byte(OP_FALSE); break;
             case TOKEN_NIL: emit_byte(OP_NIL); break;
             case TOKEN_TRUE: emit_byte(OP_TRUE); break;
@@ -585,24 +544,24 @@ public:
     }
 
     void parse_precedence(Precedence precedence) {
-        advance();
-        ParseFn prefix_rule = get_rule(m_previous.type).prefix;
+        m_parser->advance();
+        ParseFn prefix_rule = get_rule(m_parser->previous().type).prefix;
         if (prefix_rule == nullptr) {
-            error("Expect expression.");
+            m_parser->error("Expect expression.");
             return;
         }
 
         bool can_assign = precedence <= PREC_ASSIGNMENT;
         MEMBER_FN(*this, prefix_rule)(can_assign);
 
-        while (precedence <= get_rule(m_current.type).precedence) {
-            advance();
-            ParseFn infix_rule = get_rule(m_previous.type).infix;
+        while (precedence <= get_rule(m_parser->current().type).precedence) {
+            m_parser->advance();
+            ParseFn infix_rule = get_rule(m_parser->previous().type).infix;
             MEMBER_FN(*this, infix_rule)(can_assign);
         }
 
-        if (can_assign && match(TOKEN_EQUAL)) {
-            error("Invalid assignment target.");
+        if (can_assign && m_parser->match(TOKEN_EQUAL)) {
+            m_parser->error("Invalid assignment target.");
         }
     }
 
@@ -618,7 +577,7 @@ public:
             Local& local = m_locals[i];
             if (identifiers_equal(name, local.name)) {
                 if (local.depth == -1) {
-                    error("Can't read local variable in its own initializer.");
+                    m_parser->error("Can't read local variable in its own initializer.");
                 }
                 return i;
             }
@@ -627,9 +586,44 @@ public:
         return -1;
     }
 
+    int32_t add_upvalue(uint8_t index, bool is_local) {
+        int32_t upvalue_count = m_function->upvalue_count;
+
+        for (int32_t i = 0; i < upvalue_count; i++) {
+            const Upvalue& upvalue = m_upvalues[i];
+            if (upvalue.index == index && upvalue.is_local == is_local) {
+                return i;
+            }
+        }
+        if (upvalue_count == UINT8_COUNT) {
+            m_parser->error("Too many closure variables in function.");
+            return 0;
+        }
+        m_upvalues[upvalue_count].is_local = is_local;
+        m_upvalues[upvalue_count].index = index;
+
+        return m_function->upvalue_count++;
+    }
+
+    int32_t resolve_upvalue(Token name) {
+        if (m_enclosing == nullptr) return -1;
+
+        int32_t local = m_enclosing->resolve_local(name);
+        if (local != -1) {
+            return add_upvalue(local, true);
+        }
+
+        int32_t upvalue = m_enclosing->resolve_upvalue(name);
+        if (upvalue != -1) {
+            return add_upvalue((uint8_t)upvalue, false);
+        }
+
+        return -1;
+    }
+
     void add_local(Token name) {
         if (m_local_count == UINT8_COUNT) {
-            error("Too many local variables in function.");
+            m_parser->error("Too many local variables in function.");
             return;
         }
         Local& local = m_locals[m_local_count++];
@@ -640,14 +634,14 @@ public:
     void declare_variable() {
         if (m_scope_depth == 0) return;
 
-        Token name = m_previous;
+        Token name = m_parser->previous();
         for (int i = m_local_count - 1; i >= 0; i--) {
             Local& local = m_locals[i];
             if (local.depth != -1 && local.depth < m_scope_depth) {
                 break;
             }
             if (identifiers_equal(name, local.name)) {
-                error("Already a variable with this name in this scope.");
+                m_parser->error("Already a variable with this name in this scope.");
             }
         }
 
@@ -655,12 +649,12 @@ public:
     }
 
     uint8_t parse_variable(const char* error_message) {
-        consume(TOKEN_IDENTIFIER, error_message);
+        m_parser->consume(TOKEN_IDENTIFIER, error_message);
 
         declare_variable();
         if (m_scope_depth > 0) return 0;
 
-        return identifier_constant(m_previous);
+        return identifier_constant(m_parser->previous());
     }
 
     void mark_initialized() {
@@ -679,16 +673,16 @@ public:
 
     uint8_t argument_list() {
         uint8_t arg_count = 0;
-        if (!check(TOKEN_RIGHT_PAREN)) {
+        if (!m_parser->check(TOKEN_RIGHT_PAREN)) {
             do {
                 expression();
                 if (arg_count == 255) {
-                    error("Can't have more than 255 arguments.");
+                    m_parser->error("Can't have more than 255 arguments.");
                 }
                 arg_count++;
-            } while (match(TOKEN_COMMA));
+            } while (m_parser->match(TOKEN_COMMA));
         }
-        consume(TOKEN_RIGHT_PAREN, "Expect ')' after arguments.");
+        m_parser->consume(TOKEN_RIGHT_PAREN, "Expect ')' after arguments.");
         return arg_count;
     }
 
@@ -717,7 +711,7 @@ public:
 
         emit_byte(OP_POP);
         parse_precedence(PREC_TERNARY);
-        consume(TOKEN_COLON, "Expect ':' after expression.");
+        m_parser->consume(TOKEN_COLON, "Expect ':' after expression.");
 
         int32_t end_jump = emit_jump(OP_JUMP);
 
@@ -733,49 +727,24 @@ public:
         return g_rules[type];
     }
 
-    void error_at_current(const char* message) {
-        error_at(m_current, message);
-    }
-    void error(const char* message) {
-        error_at(m_previous, message);
-    }
-    void error_at(const Token& token, const char* message) {
-        if (m_panic_mode) return;
-        m_panic_mode = true;
-        fmt::print(stderr, "[line {}] Error", token.line);
-        if (token.type == TOKEN_EOF) {
-            fmt::print(stderr, " at end");
-        }
-        else if (token.type == TOKEN_ERROR) {
-            // Nothing.
-        }
-        else {
-            fmt::print(stderr, " at ({},{})", token.length, token.start);
-        }
-
-        fmt::print(stderr, ": {}\n", message);
-        m_had_error = true;
-    }
-
     void reset_errors() {
-        m_had_error = false;
-        m_panic_mode = false;
+        m_parser->reset_errors();
     }
 
 private:
     static ParseRule g_rules[];
 
-    Scanner* m_scanner = nullptr;
-    Token m_current;
-    Token m_previous;
+    Parser* m_parser = nullptr;
     StringInterner* m_string_interner;
     ObjFunction* m_function;
     FunctionType m_function_type = FunctionType::Script;
+
     Local m_locals[UINT8_COUNT];
     int32_t m_local_count = 0;
+
+    Upvalue m_upvalues[UINT8_COUNT];
     int32_t m_scope_depth = 0;
-    bool m_had_error = false;
-    bool m_panic_mode = false;
+    Compiler* m_enclosing = nullptr;
 };
 
 #undef MEMBER_FN

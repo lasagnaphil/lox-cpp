@@ -10,6 +10,8 @@
     X(OP_POP)             \
     X(OP_GET_LOCAL)       \
     X(OP_SET_LOCAL)       \
+    X(OP_GET_UPVALUE)     \
+    X(OP_SET_UPVALUE)     \
     X(OP_GET_GLOBAL)      \
     X(OP_DEFINE_GLOBAL)   \
     X(OP_SET_GLOBAL)      \
@@ -29,6 +31,7 @@
     X(OP_JUMP_IF_FALSE)   \
     X(OP_LOOP)            \
     X(OP_CALL)            \
+    X(OP_CLOSURE)         \
     X(OP_RETURN)          \
     X(OP_ARRAY_NEW)       \
     X(OP_TABLE_NEW)       \

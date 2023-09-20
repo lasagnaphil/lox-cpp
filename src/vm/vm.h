@@ -1,11 +1,10 @@
 #include "vm/compiler.h"
 #include "vm/value.h"
 #include "vm/string.h"
-#include "vm/native_fun.h"
 #include "vm/string_interner.h"
 
 struct CallFrame {
-    ObjFunction* function;
+    ObjClosure* closure;
     uint8_t* ip;
     Value* slots;
 };
@@ -50,7 +49,9 @@ private:
     }
 
     bool call_value(Value callee, int32_t arg_count);
-    bool call(ObjFunction* function, int32_t arg_count);
+    bool call(ObjClosure* closure, int32_t arg_count);
+
+    ObjUpvalue* capture_upvalue(Value* local);
 
     bool get(Value obj, Value key, Value* value);
     bool set(Value obj, Value key, Value value);
@@ -62,7 +63,7 @@ private:
 
         for (int32_t i = m_frame_count - 1; i >= 0; i--) {
             CallFrame* frame = &m_frames[i];
-            ObjFunction* function = frame->function;
+            ObjFunction* function = frame->closure->function;
             size_t instruction = frame->ip - function->chunk.m_code.data() - 1;
             fmt::print(stderr, "[line {}] in ",
                        function->chunk.m_lines[instruction]);
@@ -75,8 +76,8 @@ private:
         }
 
         auto& frame = m_frames[m_frame_count - 1];
-        size_t instr = frame.ip - frame.function->chunk.m_code.data() - 1;
-        int line = frame.function->chunk.m_lines[instr];
+        size_t instr = frame.ip - frame.closure->function->chunk.m_code.data() - 1;
+        int line = frame.closure->function->chunk.m_lines[instr];
         fmt::print(stderr, "[line {}] in script\n", line);
         reset_stack();
     }
