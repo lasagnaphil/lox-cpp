@@ -236,8 +236,8 @@ public:
         emit_bytes(OP_CLOSURE, make_constant(val_fn));
 
         for (int32_t i = 0; i < function->upvalue_count; i++) {
-            emit_byte(m_upvalues[i].is_local ? 1 : 0);
-            emit_byte(m_upvalues[i].index);
+            emit_byte(compiler.m_upvalues[i].is_local ? 1 : 0);
+            emit_byte(compiler.m_upvalues[i].index);
         }
     }
 
@@ -365,7 +365,7 @@ public:
         if (m_parser->match(TOKEN_FUN)) {
             fun_declaration();
         }
-        if (m_parser->match(TOKEN_VAR)) {
+        else if (m_parser->match(TOKEN_VAR)) {
             var_declaration();
         }
         else {
@@ -392,9 +392,6 @@ public:
             begin_scope();
             block();
             end_scope();
-        }
-        else if (m_parser->match(TOKEN_EOF)) {
-            // do nothing
         }
         else {
             expression_statement();

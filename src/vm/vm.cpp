@@ -55,8 +55,8 @@ InterpretResult VM::interpret(const char *source) {
     push(Value(closure));
     call(closure, 0);
 
-    // return run();
-    return InterpretResult::Ok;
+    return run();
+    // return InterpretResult::Ok;
 }
 
 ObjFunction* VM::compile(const char *source) {
@@ -81,21 +81,23 @@ void VM::init_builtin_functions() {
     });
     define_native("print", [](int32_t arg_count, Value* args) {
         if (arg_count == 0) return Value();
-        if (!args[0].is_string()) {
-            return Value(); // TODO: emit runtime error
-        }
-        auto fmt_str = args[0].as_string();
-        if (arg_count == 1) {
-            puts(fmt_str->chars);
-            putc('\n', stdout);
+        if (args[0].is_string()) {
+            auto fmt_str = args[0].as_string();
+            if (arg_count == 1) {
+                puts(fmt_str->chars);
+                putc('\n', stdout);
+            } else {
+                auto store = fmt::dynamic_format_arg_store<fmt::format_context>();
+                for (int32_t i = 1; i < arg_count; i++) {
+                    store.push_back(args[i].to_std_string());
+                }
+                fmt::vprint(fmt_str->chars, store);
+                putc('\n', stdout);
+            }
         }
         else {
-            auto store = fmt::dynamic_format_arg_store<fmt::format_context>();
-            for (int32_t i = 1; i < arg_count; i++) {
-                store.push_back(args[i].to_std_string());
-            }
-            fmt::vprint(fmt_str->chars, store);
-            putc('\n', stdout);
+            auto str = args[0].to_std_string();
+            puts(str.c_str());
         }
         return Value();
     });
@@ -117,6 +119,10 @@ InterpretResult VM::run() {
         double a = pop().as_number(); \
         push(Value(a op b)); \
     } while (false);
+
+#ifdef DEBUG_TRACE_EXECUTION
+    fmt::print("---- Debug Trace ----\n");
+#endif
 
     for (;;) {
 #ifdef DEBUG_TRACE_EXECUTION

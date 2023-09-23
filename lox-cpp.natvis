@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+    <Type Name="Token">
+        <DisplayString>{start,[length]su}</DisplayString>
+        <StringView>start,[length]su</StringView>
+        <Expand>
+            <Item Name="[line]">line</Item>
+            <Item Name="[type]">type</Item>
+            <Item Name="[length]">length</Item>
+        </Expand>
+    </Type>
+    <Type Name="ObjString">
+        <DisplayString>{chars,[length]su}</DisplayString>
+        <StringView>chars,[length]su</StringView>
+        <Expand>
+            <Item Name="[length]">length</Item>
+            <Item Name="[hash]">hash</Item>
+        </Expand>
+    </Type>
+    <Type Name="ObjTable">
+        <Expand>
+            <Item Name="[count]">count</Item>
+            <Item Name="[capacity]">capacity</Item>
+            <ArrayItems>
+                <Size>count</Size>
+                <ValuePointer>entries</ValuePointer>
+            </ArrayItems>
+        </Expand>
+    </Type>
+</AutoVisualizer>
