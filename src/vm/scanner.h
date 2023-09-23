@@ -38,7 +38,7 @@ inline bool identifiers_equal(const Token& a, const Token& b) {
 
 inline bool is_alpha(char c) {
     return (c >= 'a' && c <= 'z') ||
-           (c >= 'A' && c <= 'A') ||
+           (c >= 'A' && c <= 'Z') ||
            c == '_';
 }
 

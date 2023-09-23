@@ -4,7 +4,7 @@
 #include "vm/parser.h"
 #include "vm/string_interner.h"
 #include "vm/table.h"
-#include "vm/function.h"
+#include "vm/object.h"
 
 #include "core/array.h"
 
@@ -249,6 +249,18 @@ public:
         }
     }
 
+    void class_declaration() {
+        m_parser->consume(TOKEN_IDENTIFIER, "Expect class name.");
+        uint8_t name_constant = identifier_constant(m_parser->previous());
+        declare_variable();
+
+        emit_bytes(OP_CLASS, name_constant);
+        define_variable(name_constant);
+
+        m_parser->consume(TOKEN_LEFT_BRACE, "Expect '{' before class body.");
+        m_parser->consume(TOKEN_RIGHT_BRACE, "Expect '}' after class body.");
+    }
+
     void fun_declaration() {
         uint8_t global = parse_variable("Expect function name.");
         mark_initialized();
@@ -370,7 +382,10 @@ public:
     }
 
     void declaration() {
-        if (m_parser->match(TOKEN_FUN)) {
+        if (m_parser->match(TOKEN_CLASS)) {
+            class_declaration();
+        }
+        else if (m_parser->match(TOKEN_FUN)) {
             fun_declaration();
         }
         else if (m_parser->match(TOKEN_VAR)) {
@@ -537,6 +552,18 @@ public:
     void call(bool can_assign) {
         uint8_t arg_count = argument_list();
         emit_bytes(OP_CALL, arg_count);
+    }
+
+    void dot(bool can_assign) {
+        m_parser->consume(TOKEN_IDENTIFIER, "Expect property name after '.'.");
+        uint8_t name = identifier_constant(m_parser->previous());
+        if (can_assign && m_parser->match(TOKEN_EQUAL)) {
+            expression();
+            emit_bytes(OP_SET_PROPERTY, name);
+        }
+        else {
+            emit_bytes(OP_GET_PROPERTY, name);
+        }
     }
 
     void literal(bool can_assign) {

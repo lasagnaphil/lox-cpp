@@ -1,6 +1,6 @@
 #include "vm/chunk.h"
 #include "vm/table.h"
-#include "vm/function.h"
+#include "vm/object.h"
 
 #include <string>
 
@@ -50,6 +50,9 @@ int32_t Chunk::disassemble_instruction(int32_t offset) const {
         case OP_GET_GLOBAL:
         case OP_DEFINE_GLOBAL:
         case OP_SET_GLOBAL:
+        case OP_CLASS:
+        case OP_GET_PROPERTY:
+        case OP_SET_PROPERTY:
             return print_constant_instruction((OpCode)instr, offset);
         case OP_NIL:
         case OP_TRUE:

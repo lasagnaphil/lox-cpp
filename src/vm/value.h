@@ -2,7 +2,6 @@
 
 #include <cstdint>
 #include <cstdlib>
-
 #include <type_traits>
 #include <string>
 
@@ -21,6 +20,8 @@ enum ObjType {
     OBJ_FUNCTION,
     OBJ_CLOSURE,
     OBJ_NATIVEFUN,
+    OBJ_CLASS,
+    OBJ_INSTANCE,
 };
 
 // https://en.wikipedia.org/wiki/Xorshift
@@ -36,8 +37,8 @@ inline uint32_t gen_random_uid() {
 }
 
 struct Obj {
-    ObjType type : 4;
-    uint32_t uid : 28; // TODO: make this 64-bit?
+    ObjType type : 5;
+    uint32_t uid : 27; // TODO: make this 64-bit?
     uint32_t refcount; // TODO: make this atomic
 
     Obj(ObjType type_) : type(type_), uid(gen_random_uid()), refcount(1) {}
@@ -49,6 +50,8 @@ struct ObjTable;
 struct ObjFunction;
 struct ObjClosure;
 struct ObjNativeFun;
+struct ObjClass;
+struct ObjInstance;
 
 struct Value {
     ValueType type : 4;
@@ -73,6 +76,8 @@ struct Value {
     explicit Value(ObjFunction* fn) : type(VAL_OBJ) { as.obj = reinterpret_cast<Obj*>(fn); }
     explicit Value(ObjClosure* cs) : type(VAL_OBJ) { as.obj = reinterpret_cast<Obj*>(cs); }
     explicit Value(ObjNativeFun* fn) : type(VAL_OBJ) { as.obj = reinterpret_cast<Obj*>(fn); }
+    explicit Value(ObjClass* klass) : type(VAL_OBJ) { as.obj = reinterpret_cast<Obj*>(klass); }
+    explicit Value(ObjInstance* inst) : type(VAL_OBJ) { as.obj = reinterpret_cast<Obj*>(inst); }
 
     bool is_bool() const { return type == VAL_BOOL; }
     bool is_nil() const { return type == VAL_NIL; }
@@ -85,6 +90,8 @@ struct Value {
     bool is_function() const { return is_obj_type(OBJ_FUNCTION); }
     bool is_closure() const { return is_obj_type(OBJ_CLOSURE); }
     bool is_nativefun() const { return is_obj_type(OBJ_NATIVEFUN); }
+    bool is_class() const { return is_obj_type(OBJ_CLASS); }
+    bool is_instance() const { return is_obj_type(OBJ_INSTANCE); }
 
     bool as_bool() const { return as.boolean; }
     double as_number() const { return as.number; }
@@ -95,6 +102,8 @@ struct Value {
     ObjFunction* as_function() const { return reinterpret_cast<ObjFunction*>(as.obj); }
     ObjClosure* as_closure() const { return reinterpret_cast<ObjClosure*>(as.obj); }
     ObjNativeFun* as_nativefun() const { return reinterpret_cast<ObjNativeFun*>(as.obj); }
+    ObjClass* as_class() const { return reinterpret_cast<ObjClass*>(as.obj); }
+    ObjInstance* as_instance() const { return reinterpret_cast<ObjInstance*>(as.obj); }
 
     bool is_falsey() const {
         return is_nil() || (is_bool() && !as_bool());

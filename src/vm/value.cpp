@@ -3,7 +3,7 @@
 #include "vm/string.h"
 #include "vm/array.h"
 #include "vm/table.h"
-#include "vm/function.h"
+#include "vm/object.h"
 
 #include <fmt/core.h>
 
@@ -11,6 +11,10 @@ void Value::obj_free() {
     switch (as.obj->type) {
         case OBJ_STRING: {
             free_obj_string(reinterpret_cast<ObjString*>(as.obj));
+            break;
+        }
+        case OBJ_UPVALUE: {
+            free_obj_upvalue(reinterpret_cast<ObjUpvalue*>(as.obj));
             break;
         }
         case OBJ_ARRAY: {
@@ -25,8 +29,20 @@ void Value::obj_free() {
             free_obj_function(reinterpret_cast<ObjFunction*>(as.obj));
             break;
         }
+        case OBJ_CLOSURE: {
+            free_obj_closure(reinterpret_cast<ObjClosure*>(as.obj));
+            break;
+        }
         case OBJ_NATIVEFUN: {
             free_obj_native_fun(reinterpret_cast<ObjNativeFun*>(as.obj));
+            break;
+        }
+        case OBJ_CLASS: {
+            free_obj_class(reinterpret_cast<ObjClass*>(as.obj));
+            break;
+        }
+        case OBJ_INSTANCE: {
+            free_obj_instance(reinterpret_cast<ObjInstance*>(as.obj));
             break;
         }
     }
@@ -146,6 +162,15 @@ std::string object_to_string(Value value) {
         case OBJ_NATIVEFUN: {
             return "<native fn>";
         }
+        case OBJ_CLASS: {
+            ObjClass* klass = value.as_class();
+            return fmt::format("<class {}>", klass->name->chars);
+        }
+        case OBJ_INSTANCE: {
+            ObjInstance* inst = value.as_instance();
+            return fmt::format("<instance {}>", inst->klass->name->chars);
+        }
+        default: return "";
     }
 }
 

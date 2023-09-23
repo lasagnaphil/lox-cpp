@@ -14,7 +14,7 @@ set(LOX_SRCS
         src/vm/string.cpp
         src/vm/array.cpp
         src/vm/table.cpp
-        src/vm/function.cpp
+        src/vm/object.cpp
         src/vm/string_interner.cpp
         src/main.cpp
 )

@@ -4,7 +4,7 @@
 #include "vm/string.h"
 #include "vm/array.h"
 #include "vm/table.h"
-#include "vm/function.h"
+#include "vm/object.h"
 
 #include "fmt/args.h"
 
@@ -381,6 +381,44 @@ InterpretResult VM::run() {
                 }
                 break;
             }
+            case OP_GET_PROPERTY: {
+                // TODO: Support property access for tables?
+                if (!peek(0).is_instance()) {
+                    runtime_error("Only instances have properties.");
+                    return InterpretResult::RuntimeError;
+                }
+
+                ObjInstance* instance = peek(0).as_instance();
+                ObjString* name = READ_STRING();
+                Value value;
+                if (instance->fields.get(Value(name), &value)) {
+                    pop();
+                    push(value);
+                    break;
+                }
+                else {
+                    runtime_error("Undefined property '{}'.", name->chars);
+                    return InterpretResult::RuntimeError;
+                }
+            }
+            case OP_SET_PROPERTY: {
+                // TODO: Support field access for tables?
+                if (!peek(1).is_instance()) {
+                    runtime_error("Only instances have properties.");
+                    return InterpretResult::RuntimeError;
+                }
+
+                ObjInstance* instance = peek(1).as_instance();
+                instance->fields.set(Value(READ_STRING()), peek(0));
+                Value value = pop();
+                pop();
+                push(value);
+                break;
+            }
+            case OP_CLASS: {
+                push(Value(create_obj_class(READ_STRING())));
+                break;
+            }
         }
     }
 
@@ -400,6 +438,12 @@ bool VM::call_value(Value callee, int32_t arg_count) {
                 Value result = native_fn(arg_count, m_stack_top - arg_count);
                 m_stack_top -= arg_count + 1;
                 push(result);
+                return true;
+            }
+            case OBJ_CLASS: {
+                ObjClass* klass = callee.as_class();
+                Value result = Value(create_obj_instance(klass));
+                m_stack_top[-arg_count - 1] = result;
                 return true;
             }
             default:
@@ -465,7 +509,8 @@ bool VM::get(Value obj, Value key, Value* value) {
         runtime_error("Cannot get field on a non-object type.");
         return false;
     }
-    if (obj.as_obj()->type == OBJ_ARRAY) {
+    ObjType type = obj.as_obj()->type;
+    if (type == OBJ_ARRAY) {
         if (!key.is_number()) {
             runtime_error("Array index must be a number.");
             if (key.is_obj()) key.obj_decref();
@@ -473,17 +518,15 @@ bool VM::get(Value obj, Value key, Value* value) {
         }
         int32_t index = (int32_t)key.as_number();
         ObjArray* array = obj.as_array();
-        bool found = array->get(index, value);
-        if (!found) {
+        if (!array->get(index, value)) {
             runtime_error("Cannot subscript array of count {} with index {}.", array->count, index);
             return false;
         }
         push(*value);
         if (value->is_obj()) value->obj_incref();
     }
-    else if (obj.as_obj()->type == OBJ_TABLE) {
-        bool found = obj.as_table()->get(key, value);
-        if (!found) {
+    else if (type == OBJ_TABLE) {
+        if (!obj.as_table()->get(key, value)) {
             runtime_error("Cannot find key {} in table.", key.to_std_string());
             return false;
         }
@@ -499,7 +542,8 @@ bool VM::set(Value obj, Value key, Value value) {
         runtime_error("Cannot set field on a non-object type.");
         return false;
     }
-    if (obj.as_obj()->type == OBJ_ARRAY) {
+    ObjType type = obj.as_obj()->type;
+    if (type == OBJ_ARRAY) {
         if (!key.is_number()) {
             runtime_error("Array index must be a number.");
             if (key.is_obj()) key.obj_decref();
@@ -507,13 +551,12 @@ bool VM::set(Value obj, Value key, Value value) {
         }
         int32_t index = (int32_t)key.as_number();
         ObjArray* array = obj.as_array();
-        bool success = array->set(index, value);
-        if (!success) {
+        if (!array->set(index, value)) {
             runtime_error("Cannot subscript array of count {} with index {}.", array->count, index);
             return false;
         }
     }
-    else if (obj.as_obj()->type == OBJ_TABLE) {
+    else if (type == OBJ_TABLE) {
         obj.as_table()->set(key, value);
     }
     return true;

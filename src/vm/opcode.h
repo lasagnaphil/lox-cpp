@@ -34,12 +34,15 @@
     X(OP_CLOSURE)         \
     X(OP_CLOSE_UPVALUE)   \
     X(OP_RETURN)          \
+    X(OP_CLASS)           \
     X(OP_ARRAY_NEW)       \
     X(OP_TABLE_NEW)       \
     X(OP_GET)             \
     X(OP_SET)             \
     X(OP_GET_NOPOP)       \
     X(OP_SET_NOPOP)       \
+    X(OP_GET_PROPERTY)    \
+    X(OP_SET_PROPERTY)    \
     X(OP_INVALID)
 
 enum OpCode : uint8_t {
