@@ -20,7 +20,7 @@ enum class InterpretResult {
 };
 
 enum class FunctionType {
-    Function, Script
+    Function, Initializer, Method, Script
 };
 
 enum Precedence : uint8_t {
@@ -60,6 +60,16 @@ struct Upvalue {
 
 #define MEMBER_FN(object,ptrToMember)  ((object).*(ptrToMember))
 
+class ClassCompiler {
+public:
+    void init(ClassCompiler* enclosing) {
+        m_enclosing = enclosing;
+    }
+    ClassCompiler* get_enclosing() const { return m_enclosing; }
+private:
+    ClassCompiler* m_enclosing;
+};
+
 class Compiler {
 public:
     Compiler(Parser* parser, StringInterner* string_interner)
@@ -78,22 +88,29 @@ public:
         local.is_captured = false;
     }
 
-    ObjFunction* compile_function(Compiler* enclosing) {
+    ObjFunction* compile_function(Compiler* enclosing, FunctionType type) {
         m_function = create_obj_function();
         ObjString* fn_name = create_obj_string(m_parser->previous().start, m_parser->previous().length);
         m_function->name = fn_name;
-        m_function_type = FunctionType::Function;
+        m_function_type = type;
 
         m_enclosing = enclosing;
+        m_class_compiler = enclosing->m_class_compiler;
 
         m_local_count = 0;
         m_scope_depth = 0;
 
         Local& local = m_locals[m_local_count++];
         local.depth = 0;
-        local.name.start = "";
-        local.name.length = 0;
         local.is_captured = false;
+        if (type != FunctionType::Function) {
+            local.name.start = "this";
+            local.name.length = 4;
+        }
+        else {
+            local.name.start = "";
+            local.name.length = 0;
+        }
 
         begin_scope();
         m_parser->consume(TOKEN_LEFT_PAREN, "Expect '(' after function name.");
@@ -177,7 +194,13 @@ public:
     }
 
     void emit_return() {
-        emit_byte(OP_NIL);
+        if (m_function_type == FunctionType::Initializer) {
+            emit_bytes(OP_GET_LOCAL, 0);
+        }
+        else {
+            emit_byte(OP_NIL);
+        }
+
         emit_byte(OP_RETURN);
     }
 
@@ -239,7 +262,7 @@ public:
 
     void function(FunctionType type) {
         Compiler compiler(m_parser, m_string_interner);
-        ObjFunction* function = compiler.compile_function(this);
+        ObjFunction* function = compiler.compile_function(this, type);
         Value val_fn = Value(function);
         emit_bytes(OP_CLOSURE, make_constant(val_fn));
 
@@ -249,16 +272,41 @@ public:
         }
     }
 
+    void method() {
+        m_parser->consume(TOKEN_IDENTIFIER, "Expect method name.");
+        uint8_t constant = identifier_constant(m_parser->previous());
+
+        FunctionType type = FunctionType::Method;
+        if (m_parser->previous().length == 4 &&
+            memcmp(m_parser->previous().start, "init", 4) == 0) {
+            type = FunctionType::Initializer;
+        }
+        function(type);
+        emit_bytes(OP_METHOD, constant);
+    }
+
     void class_declaration() {
         m_parser->consume(TOKEN_IDENTIFIER, "Expect class name.");
-        uint8_t name_constant = identifier_constant(m_parser->previous());
+        Token class_name = m_parser->previous();
+        uint8_t name_constant = identifier_constant(class_name);
         declare_variable();
 
         emit_bytes(OP_CLASS, name_constant);
         define_variable(name_constant);
 
+        ClassCompiler class_compiler;
+        class_compiler.init(m_class_compiler);
+        m_class_compiler = &class_compiler;
+
+        named_variable(class_name, false);
         m_parser->consume(TOKEN_LEFT_BRACE, "Expect '{' before class body.");
+        while (!m_parser->check(TOKEN_RIGHT_BRACE) && !m_parser->check(TOKEN_EOF)) {
+            method();
+        }
         m_parser->consume(TOKEN_RIGHT_BRACE, "Expect '}' after class body.");
+        emit_byte(OP_POP);
+
+        m_class_compiler = m_class_compiler->get_enclosing();
     }
 
     void fun_declaration() {
@@ -288,6 +336,9 @@ public:
             emit_return();
         }
         else {
+            if (m_function_type == FunctionType::Initializer) {
+                m_parser->error("Can't return a value from an initializer.");
+            }
             expression();
             m_parser->consume(TOKEN_SEMICOLON, "Expect ';' after return value.");
             emit_byte(OP_RETURN);
@@ -517,6 +568,13 @@ public:
         named_variable(m_parser->previous(), can_assign);
     }
 
+    void this_(bool can_assign) {
+        if (m_class_compiler == nullptr) {
+            m_parser->error("Can't use 'this' outside of a class");
+        }
+        variable(false);
+    }
+
     void unary(bool can_assign) {
         TokenType op_type = m_parser->previous().type;
 
@@ -560,6 +618,11 @@ public:
         if (can_assign && m_parser->match(TOKEN_EQUAL)) {
             expression();
             emit_bytes(OP_SET_PROPERTY, name);
+        }
+        else if (m_parser->match(TOKEN_LEFT_PAREN)) {
+            uint8_t arg_count = argument_list();
+            emit_bytes(OP_INVOKE, name);
+            emit_byte(arg_count);
         }
         else {
             emit_bytes(OP_GET_PROPERTY, name);
@@ -779,6 +842,7 @@ private:
     Upvalue m_upvalues[UINT8_COUNT];
     int32_t m_scope_depth = 0;
     Compiler* m_enclosing = nullptr;
+    ClassCompiler* m_class_compiler = nullptr;
 };
 
 #undef MEMBER_FN

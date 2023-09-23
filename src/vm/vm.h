@@ -50,12 +50,17 @@ private:
 
     bool call_value(Value callee, int32_t arg_count);
     bool call(ObjClosure* closure, int32_t arg_count);
+    bool invoke(ObjString* name, int32_t arg_count);
+    bool invoke_from_class(ObjClass* klass, ObjString* name, int32_t arg_count);
 
     ObjUpvalue* capture_upvalue(Value* local);
     void close_upvalues(Value* last);
 
     bool get(Value obj, Value key, Value* value);
     bool set(Value obj, Value key, Value value);
+
+    void define_method(ObjString* name);
+    bool bind_method(ObjClass* klass, ObjString* name);
 
     template <typename ...Args>
     inline void runtime_error(const char* fmt, Args&&... args) {
@@ -95,5 +100,7 @@ private:
     StringInterner m_string_interner;
     ObjTable m_globals;
 
-    ObjUpvalue* m_open_upvalues;
+    ObjUpvalue* m_open_upvalues = nullptr;
+
+    ObjString* m_init_string;
 };

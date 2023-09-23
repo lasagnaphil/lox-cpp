@@ -13,7 +13,7 @@ VM::VM() {
     m_string_interner.init();
     m_globals.init();
 
-    m_open_upvalues = nullptr;
+    m_init_string = m_string_interner.create_string("init", 4);
 
     init_builtin_functions();
 }
@@ -289,6 +289,15 @@ InterpretResult VM::run() {
                 frame = &m_frames[m_frame_count - 1];
                 break;
             }
+            case OP_INVOKE: {
+                ObjString* method = READ_STRING();
+                int32_t arg_count = READ_BYTE();
+                if (!invoke(method, arg_count)) {
+                    return InterpretResult::RuntimeError;
+                }
+                frame = &m_frames[m_frame_count - 1];
+                break;
+            }
             case OP_CLOSURE: {
                 ObjFunction* function = READ_CONSTANT().as_function();
                 ObjClosure* closure = create_obj_closure(function);
@@ -396,10 +405,11 @@ InterpretResult VM::run() {
                     push(value);
                     break;
                 }
-                else {
-                    runtime_error("Undefined property '{}'.", name->chars);
+
+                if (!bind_method(instance->klass, name)) {
                     return InterpretResult::RuntimeError;
                 }
+                break;
             }
             case OP_SET_PROPERTY: {
                 // TODO: Support field access for tables?
@@ -417,6 +427,10 @@ InterpretResult VM::run() {
             }
             case OP_CLASS: {
                 push(Value(create_obj_class(READ_STRING())));
+                break;
+            }
+            case OP_METHOD: {
+                define_method(READ_STRING());
                 break;
             }
         }
@@ -442,9 +456,21 @@ bool VM::call_value(Value callee, int32_t arg_count) {
             }
             case OBJ_CLASS: {
                 ObjClass* klass = callee.as_class();
-                Value result = Value(create_obj_instance(klass));
-                m_stack_top[-arg_count - 1] = result;
+                m_stack_top[-arg_count - 1] = Value(create_obj_instance(klass));
+                Value initializer;
+                if (klass->methods.get(Value(m_init_string), &initializer)) {
+                    return call(initializer.as_closure(), arg_count);
+                }
+                else if (arg_count != 0) {
+                    runtime_error("Expected 0 arguments but got {}", arg_count);
+                    return false;
+                }
                 return true;
+            }
+            case OBJ_BOUND_METHOD: {
+                ObjBoundMethod* bound = callee.as_bound_method();
+                m_stack_top[-arg_count - 1] = bound->receiver;
+                return call(bound->method, arg_count);
             }
             default:
                 break;
@@ -467,6 +493,32 @@ bool VM::call(ObjClosure* closure, int32_t arg_count) {
     frame->ip = closure->function->chunk.m_code.data();
     frame->slots = m_stack_top - arg_count - 1;
     return true;
+}
+
+bool VM::invoke(ObjString *name, int32_t arg_count) {
+    Value receiver = peek(arg_count);
+    if (!receiver.is_instance()) {
+        runtime_error("Only instances have methods.");
+        return false;
+    }
+
+    ObjInstance* instance = receiver.as_instance();
+
+    Value value;
+    if (instance->fields.get(Value(name), &value)) {
+        m_stack_top[-arg_count - 1] = value;
+        return call_value(value, arg_count);
+    }
+    return invoke_from_class(instance->klass, name, arg_count);
+}
+
+bool VM::invoke_from_class(ObjClass *klass, ObjString *name, int32_t arg_count) {
+    Value method;
+    if (!klass->methods.get(Value(name), &method)) {
+        runtime_error("Undefined property '{}'.", name->chars);
+        return false;
+    }
+    return call(method.as_closure(), arg_count);
 }
 
 ObjUpvalue *VM::capture_upvalue(Value *local) {
@@ -561,5 +613,27 @@ bool VM::set(Value obj, Value key, Value value) {
     }
     return true;
 }
+
+void VM::define_method(ObjString *name) {
+    Value method = peek(0);
+    ObjClass* klass = peek(1).as_class();
+    klass->methods.set(Value(name), method);
+    pop();
+}
+
+bool VM::bind_method(ObjClass *klass, ObjString *name) {
+    Value method;
+    if (!klass->methods.get(Value(name), &method)) {
+        runtime_error("Undefined property '{}'.", name->chars);
+        return false;
+    }
+
+    ObjBoundMethod* bound = create_obj_bound_method(peek(0), method.as_closure());
+
+    pop();
+    push(Value(bound));
+    return true;
+}
+
 
 

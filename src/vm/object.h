@@ -36,12 +36,19 @@ struct ObjNativeFun {
 struct ObjClass {
     Obj obj = OBJ_CLASS;
     ObjString* name;
+    ObjTable methods;
 };
 
 struct ObjInstance {
     Obj obj = OBJ_INSTANCE;
     ObjClass* klass;
     ObjTable fields;
+};
+
+struct ObjBoundMethod {
+    Obj obj = OBJ_BOUND_METHOD;
+    Value receiver;
+    ObjClosure* method;
 };
 
 ObjUpvalue* create_obj_upvalue(Value* slot);
@@ -61,3 +68,6 @@ void free_obj_class(ObjClass* klass);
 
 ObjInstance* create_obj_instance(ObjClass* klass);
 void free_obj_instance(ObjInstance* inst);
+
+ObjBoundMethod* create_obj_bound_method(Value receiver, ObjClosure* method);
+void free_obj_bound_method(ObjBoundMethod* bound_method);

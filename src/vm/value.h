@@ -22,6 +22,7 @@ enum ObjType {
     OBJ_NATIVEFUN,
     OBJ_CLASS,
     OBJ_INSTANCE,
+    OBJ_BOUND_METHOD
 };
 
 // https://en.wikipedia.org/wiki/Xorshift
@@ -52,6 +53,7 @@ struct ObjClosure;
 struct ObjNativeFun;
 struct ObjClass;
 struct ObjInstance;
+struct ObjBoundMethod;
 
 struct Value {
     ValueType type : 4;
@@ -78,6 +80,7 @@ struct Value {
     explicit Value(ObjNativeFun* fn) : type(VAL_OBJ) { as.obj = reinterpret_cast<Obj*>(fn); }
     explicit Value(ObjClass* klass) : type(VAL_OBJ) { as.obj = reinterpret_cast<Obj*>(klass); }
     explicit Value(ObjInstance* inst) : type(VAL_OBJ) { as.obj = reinterpret_cast<Obj*>(inst); }
+    explicit Value(ObjBoundMethod* method) : type(VAL_OBJ) { as.obj = reinterpret_cast<Obj*>(method); }
 
     bool is_bool() const { return type == VAL_BOOL; }
     bool is_nil() const { return type == VAL_NIL; }
@@ -92,6 +95,7 @@ struct Value {
     bool is_nativefun() const { return is_obj_type(OBJ_NATIVEFUN); }
     bool is_class() const { return is_obj_type(OBJ_CLASS); }
     bool is_instance() const { return is_obj_type(OBJ_INSTANCE); }
+    bool is_bound_method() const { return is_obj_type(OBJ_BOUND_METHOD); }
 
     bool as_bool() const { return as.boolean; }
     double as_number() const { return as.number; }
@@ -104,6 +108,7 @@ struct Value {
     ObjNativeFun* as_nativefun() const { return reinterpret_cast<ObjNativeFun*>(as.obj); }
     ObjClass* as_class() const { return reinterpret_cast<ObjClass*>(as.obj); }
     ObjInstance* as_instance() const { return reinterpret_cast<ObjInstance*>(as.obj); }
+    ObjBoundMethod* as_bound_method() const { return reinterpret_cast<ObjBoundMethod*>(as.obj); }
 
     bool is_falsey() const {
         return is_nil() || (is_bool() && !as_bool());

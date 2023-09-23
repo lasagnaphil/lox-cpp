@@ -36,6 +36,8 @@ private:
 
     int32_t print_byte_instruction(OpCode opcode, int32_t offset) const;
 
+    int32_t print_invoke_instruction(OpCode opcode, int32_t offset) const;
+
     int32_t print_jump_instruction(OpCode opcode, int32_t sign, int32_t offset) const;
 
     int32_t print_object_new_instruction(OpCode opcode, int32_t offset) const;

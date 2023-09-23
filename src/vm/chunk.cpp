@@ -51,6 +51,7 @@ int32_t Chunk::disassemble_instruction(int32_t offset) const {
         case OP_DEFINE_GLOBAL:
         case OP_SET_GLOBAL:
         case OP_CLASS:
+        case OP_METHOD:
         case OP_GET_PROPERTY:
         case OP_SET_PROPERTY:
             return print_constant_instruction((OpCode)instr, offset);
@@ -82,6 +83,8 @@ int32_t Chunk::disassemble_instruction(int32_t offset) const {
         case OP_SET_UPVALUE:
         case OP_CALL:
             return print_byte_instruction((OpCode)instr, offset);
+        case OP_INVOKE:
+            return print_invoke_instruction((OpCode)instr, offset);
         case OP_CLOSURE: {
             offset++;
             uint8_t constant = m_code[offset++];
@@ -121,7 +124,7 @@ int32_t Chunk::print_constant_instruction(OpCode opcode, int32_t offset) const {
     uint8_t constant_loc = m_code[offset + 1];
     fmt::print("{:<16s} {:4d} '", g_opcode_str[opcode], constant_loc);
     fputs(m_constants[constant_loc].to_std_string().c_str(), stdout);
-    fmt::print("'\n");
+    fputs("'\n", stdout);
     return offset + 2;
 }
 
@@ -130,6 +133,16 @@ int32_t Chunk::print_byte_instruction(OpCode opcode, int32_t offset) const {
     uint8_t slot = m_code[offset + 1];
     fmt::print("{:<16s} {:4d}\n", g_opcode_str[opcode], slot);
     return offset + 2;
+}
+
+int32_t Chunk::print_invoke_instruction(OpCode opcode, int32_t offset) const {
+    assert(opcode < OP_COUNT);
+    uint8_t constant = m_code[offset + 1];
+    uint8_t arg_count = m_code[offset + 2];
+    fmt::print("{:<16s} ({:d} args) {:4d} '", g_opcode_str[opcode], arg_count, constant);
+    fputs(m_constants[constant].to_std_string().c_str(), stdout);
+    fputs("'\n", stdout);
+    return offset + 3;
 }
 
 int32_t Chunk::print_jump_instruction(OpCode opcode, int32_t sign, int32_t offset) const {
@@ -146,4 +159,5 @@ int32_t Chunk::print_object_new_instruction(OpCode opcode, int32_t offset) const
     fmt::print("{:<16s} {:4d}\n", g_opcode_str[opcode], count);
     return offset + 3;
 }
+
 

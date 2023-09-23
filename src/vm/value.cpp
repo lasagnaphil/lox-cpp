@@ -45,6 +45,10 @@ void Value::obj_free() {
             free_obj_instance(reinterpret_cast<ObjInstance*>(as.obj));
             break;
         }
+        case OBJ_BOUND_METHOD: {
+            free_obj_bound_method(reinterpret_cast<ObjBoundMethod*>(as.obj));
+            break;
+        }
     }
     as.obj = nullptr;
 }
@@ -103,6 +107,15 @@ std::string value_to_string(Value value) {
     }
 }
 
+std::string function_to_string(ObjFunction* fn) {
+    if (fn->name == nullptr) {
+        return "<script>";
+    }
+    else {
+        return fmt::format("<fn {}>", fn->name->chars);
+    }
+}
+
 std::string object_to_string(Value value) {
     switch (value.as.obj->type) {
         case OBJ_STRING: return value.as_string()->chars;
@@ -142,22 +155,10 @@ std::string object_to_string(Value value) {
             return str;
         }
         case OBJ_FUNCTION: {
-            ObjFunction* fn = value.as_function();
-            if (fn->name == nullptr) {
-                return "<script>";
-            }
-            else {
-                return fmt::format("<fn {}>", fn->name->chars);
-            }
+            return function_to_string(value.as_function());
         }
         case OBJ_CLOSURE: {
-            ObjFunction* fn = value.as_closure()->function;
-            if (fn->name == nullptr) {
-                return "<script>";
-            }
-            else {
-                return fmt::format("<fn {}>", fn->name->chars);
-            }
+            return function_to_string(value.as_closure()->function);
         }
         case OBJ_NATIVEFUN: {
             return "<native fn>";
@@ -168,7 +169,10 @@ std::string object_to_string(Value value) {
         }
         case OBJ_INSTANCE: {
             ObjInstance* inst = value.as_instance();
-            return fmt::format("<instance {}>", inst->klass->name->chars);
+            return fmt::format("<inst {}>", inst->klass->name->chars);
+        }
+        case OBJ_BOUND_METHOD: {
+            return function_to_string(value.as_bound_method()->method->function);
         }
         default: return "";
     }
