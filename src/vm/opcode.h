@@ -32,6 +32,7 @@
     X(OP_LOOP)            \
     X(OP_CALL)            \
     X(OP_CLOSURE)         \
+    X(OP_CLOSE_UPVALUE)   \
     X(OP_RETURN)          \
     X(OP_ARRAY_NEW)       \
     X(OP_TABLE_NEW)       \

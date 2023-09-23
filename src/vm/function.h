@@ -6,6 +6,8 @@
 struct ObjUpvalue {
     Obj obj = OBJ_UPVALUE;
     Value* location;
+    Value closed;
+    ObjUpvalue* next;
 };
 
 struct ObjFunction {
@@ -30,6 +32,9 @@ struct ObjNativeFun {
     NativeFun function;
 };
 
+ObjUpvalue* create_obj_upvalue(Value* slot);
+void free_obj_upvalue(ObjUpvalue* upvalue);
+
 ObjFunction* create_obj_function();
 void free_obj_function(ObjFunction* fn);
 
@@ -38,6 +43,3 @@ void free_obj_closure(ObjClosure* closure);
 
 ObjNativeFun* create_obj_native_fun(NativeFun native_fn);
 void free_obj_native_fun(ObjNativeFun* native_fn);
-
-ObjUpvalue* create_obj_upvalue(Value* slot);
-void free_obj_upvalue(ObjUpvalue* upvalue);

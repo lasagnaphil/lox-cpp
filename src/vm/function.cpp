@@ -1,5 +1,19 @@
 #include "vm/function.h"
 
+ObjUpvalue* create_obj_upvalue(Value* slot) {
+    void* raw_data = malloc(sizeof(ObjUpvalue));
+    ObjUpvalue* upvalue = static_cast<ObjUpvalue*>(raw_data);
+    new (upvalue) ObjUpvalue();
+    upvalue->location = slot;
+    upvalue->closed = Value();
+    upvalue->next = nullptr;
+    return upvalue;
+}
+
+void free_obj_upvalue(ObjUpvalue* upvalue) {
+    upvalue->~ObjUpvalue();
+    free(upvalue);
+}
 ObjFunction *create_obj_function() {
     void* raw_data = malloc(sizeof(ObjFunction));
     new (raw_data) ObjFunction();
@@ -47,17 +61,4 @@ ObjNativeFun* create_obj_native_fun(NativeFun native_fn) {
 void free_obj_native_fun(ObjNativeFun* native_fn) {
     native_fn->~ObjNativeFun();
     free(native_fn);
-}
-
-ObjUpvalue* create_obj_upvalue(Value* slot) {
-    void* raw_data = malloc(sizeof(ObjUpvalue));
-    ObjUpvalue* upvalue = static_cast<ObjUpvalue*>(raw_data);
-    new (upvalue) ObjUpvalue();
-    upvalue->location = slot;
-    return upvalue;
-}
-
-void free_obj_upvalue(ObjUpvalue* upvalue) {
-    upvalue->~ObjUpvalue();
-    free(upvalue);
 }

@@ -50,6 +50,7 @@ struct ParseRule {
 struct Local {
     Token name;
     int32_t depth;
+    bool is_captured;
 };
 
 struct Upvalue {
@@ -74,6 +75,7 @@ public:
         local.depth = 0;
         local.name.start = "";
         local.name.length = 0;
+        local.is_captured = false;
     }
 
     ObjFunction* compile_function(Compiler* enclosing) {
@@ -91,6 +93,7 @@ public:
         local.depth = 0;
         local.name.start = "";
         local.name.length = 0;
+        local.is_captured = false;
 
         begin_scope();
         m_parser->consume(TOKEN_LEFT_PAREN, "Expect '(' after function name.");
@@ -212,7 +215,12 @@ public:
 
         while (m_local_count > 0 &&
                m_locals[m_local_count - 1].depth > m_scope_depth) {
-            emit_byte(OP_POP);
+            if (m_locals[m_local_count - 1].is_captured) {
+                emit_byte(OP_CLOSE_UPVALUE);
+            }
+            else {
+                emit_byte(OP_POP);
+            }
             m_local_count--;
         }
     }
@@ -607,6 +615,7 @@ public:
 
         int32_t local = m_enclosing->resolve_local(name);
         if (local != -1) {
+            m_enclosing->m_locals[local].is_captured = true;
             return add_upvalue(local, true);
         }
 
@@ -626,6 +635,7 @@ public:
         Local& local = m_locals[m_local_count++];
         local.name = name;
         local.depth = -1;
+        local.is_captured = false;
     }
 
     void declare_variable() {

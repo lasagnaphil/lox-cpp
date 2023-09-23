@@ -52,6 +52,7 @@ private:
     bool call(ObjClosure* closure, int32_t arg_count);
 
     ObjUpvalue* capture_upvalue(Value* local);
+    void close_upvalues(Value* last);
 
     bool get(Value obj, Value key, Value* value);
     bool set(Value obj, Value key, Value value);
@@ -93,4 +94,6 @@ private:
 
     StringInterner m_string_interner;
     ObjTable m_globals;
+
+    ObjUpvalue* m_open_upvalues;
 };

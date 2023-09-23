@@ -71,6 +71,7 @@ int32_t Chunk::disassemble_instruction(int32_t offset) const {
         case OP_SET:
         case OP_GET_NOPOP:
         case OP_SET_NOPOP:
+        case OP_CLOSE_UPVALUE:
             return print_simple_instruction((OpCode)instr, offset);
         case OP_GET_LOCAL:
         case OP_SET_LOCAL:

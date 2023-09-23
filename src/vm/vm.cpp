@@ -4,6 +4,7 @@
 #include "vm/string.h"
 #include "vm/array.h"
 #include "vm/table.h"
+#include "vm/function.h"
 
 #include "fmt/args.h"
 
@@ -11,6 +12,8 @@ VM::VM() {
     m_stack_top = m_stack.data();
     m_string_interner.init();
     m_globals.init();
+
+    m_open_upvalues = nullptr;
 
     init_builtin_functions();
 }
@@ -302,8 +305,14 @@ InterpretResult VM::run() {
                 }
                 break;
             }
+            case OP_CLOSE_UPVALUE: {
+                close_upvalues(m_stack_top - 1);
+                pop();
+                break;
+            }
             case OP_RETURN: {
                 Value result = pop();
+                close_upvalues(frame->slots);
                 m_frame_count--;
                 if (m_frame_count == 0) {
                     pop();
@@ -417,8 +426,38 @@ bool VM::call(ObjClosure* closure, int32_t arg_count) {
 }
 
 ObjUpvalue *VM::capture_upvalue(Value *local) {
+    ObjUpvalue* prev_upvalue = nullptr;
+    ObjUpvalue* upvalue = m_open_upvalues;
+    while (upvalue != nullptr && upvalue->location > local) {
+        prev_upvalue = upvalue;
+        upvalue = upvalue->next;
+    }
+
+    if (upvalue != nullptr && upvalue->location == local) {
+        return upvalue;
+    }
+
     ObjUpvalue* created_upvalue = create_obj_upvalue(local);
+    created_upvalue->next = upvalue;
+
+    if (prev_upvalue == nullptr) {
+        m_open_upvalues = created_upvalue;
+    }
+    else {
+        prev_upvalue->next = created_upvalue;
+    }
+
     return created_upvalue;
+}
+
+void VM::close_upvalues(Value *last) {
+    while (m_open_upvalues != nullptr &&
+           m_open_upvalues->location >= last) {
+        ObjUpvalue* upvalue = m_open_upvalues;
+        upvalue->closed = *upvalue->location;
+        upvalue->location = &upvalue->closed;
+        m_open_upvalues = upvalue->next;
+    }
 }
 
 bool VM::get(Value obj, Value key, Value* value) {
@@ -479,4 +518,5 @@ bool VM::set(Value obj, Value key, Value value) {
     }
     return true;
 }
+
 

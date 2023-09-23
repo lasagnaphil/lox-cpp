@@ -1,0 +1,10 @@
+var closures = [nil, nil, nil, nil, nil];
+for (var i = 0; i < 5; i = i + 1) {
+    fun a() {
+        print(i);
+    }
+    closures[i] = a;
+}
+for (var i = 0; i < 5; i = i + 1) {
+    closures[i]();
+}
