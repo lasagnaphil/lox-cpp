@@ -1,12 +1,12 @@
 #include "vm/vm.h"
 
 #include "core/file.h"
+
 #include "vm/string.h"
 #include "vm/array.h"
 #include "vm/table.h"
 #include "vm/object.h"
-
-#include "fmt/args.h"
+#include "vm/format.h"
 
 VM::VM() {
     m_stack_top = m_stack.data();
@@ -90,11 +90,10 @@ void VM::init_builtin_functions() {
                 puts(fmt_str->chars);
                 putc('\n', stdout);
             } else {
-                auto store = fmt::dynamic_format_arg_store<fmt::format_context>();
-                for (int32_t i = 1; i < arg_count; i++) {
-                    store.push_back(args[i].to_std_string());
+                std::string err_msg;
+                if (!formatted_print(stdout, err_msg, fmt_str->chars, Span<Value>(args + 1, arg_count - 1))) {
+                    fmt::print("Format error in print(): {}", err_msg);
                 }
-                fmt::vprint(fmt_str->chars, store);
                 putc('\n', stdout);
             }
         }
