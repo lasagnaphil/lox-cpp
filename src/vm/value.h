@@ -5,6 +5,8 @@
 #include <type_traits>
 #include <string>
 
+#define LOX_NAN_BOXING
+
 enum ValueType {
     VAL_BOOL,
     VAL_NIL,
@@ -56,6 +58,49 @@ struct ObjInstance;
 struct ObjBoundMethod;
 
 struct Value {
+
+#ifdef LOX_NAN_BOXING
+
+#define SIGN_BIT ((uint64_t)0x8000000000000000)
+#define QNAN ((uint64_t)0x7ffc000000000000)
+#define TAG_NIL 1
+#define TAG_FALSE 2
+#define TAG_TRUE 3
+
+#define NIL_VAL         ((uint64_t)(QNAN | TAG_NIL))
+#define FALSE_VAL       ((uint64_t)(QNAN | TAG_FALSE))
+#define TRUE_VAL        ((uint64_t)(QNAN | TAG_TRUE))
+
+    uint64_t value;
+
+    Value() : value((uint64_t)(QNAN | TAG_NIL)) {}
+
+    // Need to do this template shenanigans to prevent any T* -> bool implicit conversions (C++ wtf)
+    template <typename T, typename = std::enable_if_t<std::is_same_v<T, bool>>>
+    explicit Value(T boolean) : value(boolean? TRUE_VAL : FALSE_VAL) {}
+
+    explicit Value(double number) {
+        memcpy(&value, &number, sizeof(Value));
+    }
+    explicit Value(Obj* obj) {
+        value = SIGN_BIT | QNAN | (uint64_t)(uintptr_t)(obj);
+    }
+
+    bool is_bool() const { return (value | 1) == TRUE_VAL; }
+    bool is_nil() const { return value == NIL_VAL; }
+    bool is_number() const { return (value & QNAN) != QNAN; }
+    bool is_obj() const { return (value & (QNAN | SIGN_BIT)) == (QNAN | SIGN_BIT); }
+    bool is_obj_type(ObjType type) const { return is_obj() && as_obj()->type == type; }
+
+    bool as_bool() const { return value == TRUE_VAL; }
+    double as_number() const {
+        double num;
+        memcpy(&num, &value, sizeof(Value));
+        return num;
+    }
+    Obj* as_obj() const { return (Obj*)(uintptr_t)(value & ~(SIGN_BIT | QNAN)); }
+
+#else
     ValueType type;
     union {
         bool boolean;
@@ -71,21 +116,29 @@ struct Value {
 
     explicit Value(double number) : type(VAL_NUMBER) { as.number = number; }
     explicit Value(Obj* obj) : type(VAL_OBJ) { as.obj = obj; }
-    explicit Value(ObjString* str) : type(VAL_OBJ) { as.obj = reinterpret_cast<Obj*>(str); }
-    explicit Value(ObjArray* arr) :  type(VAL_OBJ) { as.obj = reinterpret_cast<Obj*>(arr); }
-    explicit Value(ObjTable* tbl) : type(VAL_OBJ) { as.obj = reinterpret_cast<Obj*>(tbl); }
-    explicit Value(ObjFunction* fn) : type(VAL_OBJ) { as.obj = reinterpret_cast<Obj*>(fn); }
-    explicit Value(ObjClosure* cs) : type(VAL_OBJ) { as.obj = reinterpret_cast<Obj*>(cs); }
-    explicit Value(ObjNativeFun* fn) : type(VAL_OBJ) { as.obj = reinterpret_cast<Obj*>(fn); }
-    explicit Value(ObjClass* klass) : type(VAL_OBJ) { as.obj = reinterpret_cast<Obj*>(klass); }
-    explicit Value(ObjInstance* inst) : type(VAL_OBJ) { as.obj = reinterpret_cast<Obj*>(inst); }
-    explicit Value(ObjBoundMethod* method) : type(VAL_OBJ) { as.obj = reinterpret_cast<Obj*>(method); }
 
     bool is_bool() const { return type == VAL_BOOL; }
     bool is_nil() const { return type == VAL_NIL; }
     bool is_number() const { return type == VAL_NUMBER; }
     bool is_obj() const { return type == VAL_OBJ; }
     bool is_obj_type(ObjType type) const { return is_obj() && as_obj()->type == type; }
+
+    bool as_bool() const { return as.boolean; }
+    double as_number() const { return as.number; }
+    Obj* as_obj() const { return as.obj; }
+
+#endif
+
+    explicit Value(ObjString* obj) : Value(reinterpret_cast<Obj*>(obj)) {}
+    explicit Value(ObjArray* obj) : Value(reinterpret_cast<Obj*>(obj)) {}
+    explicit Value(ObjTable* obj) : Value(reinterpret_cast<Obj*>(obj)) {}
+    explicit Value(ObjFunction* obj) : Value(reinterpret_cast<Obj*>(obj)) {}
+    explicit Value(ObjClosure* obj) : Value(reinterpret_cast<Obj*>(obj)) {}
+    explicit Value(ObjNativeFun* obj) : Value(reinterpret_cast<Obj*>(obj)) {}
+    explicit Value(ObjClass* obj) : Value(reinterpret_cast<Obj*>(obj)) {}
+    explicit Value(ObjInstance* obj) : Value(reinterpret_cast<Obj*>(obj)) {}
+    explicit Value(ObjBoundMethod* obj) : Value(reinterpret_cast<Obj*>(obj)) {}
+
     bool is_string() const { return is_obj_type(OBJ_STRING); }
     bool is_array() const { return is_obj_type(OBJ_ARRAY); }
     bool is_table() const { return is_obj_type(OBJ_TABLE); }
@@ -96,32 +149,30 @@ struct Value {
     bool is_instance() const { return is_obj_type(OBJ_INSTANCE); }
     bool is_bound_method() const { return is_obj_type(OBJ_BOUND_METHOD); }
 
-    bool as_bool() const { return as.boolean; }
-    double as_number() const { return as.number; }
-    Obj* as_obj() const { return as.obj; }
-    ObjString* as_string() const { return reinterpret_cast<ObjString*>(as.obj); }
-    ObjArray* as_array() const { return reinterpret_cast<ObjArray*>(as.obj); }
-    ObjTable* as_table() const { return reinterpret_cast<ObjTable*>(as.obj); }
-    ObjFunction* as_function() const { return reinterpret_cast<ObjFunction*>(as.obj); }
-    ObjClosure* as_closure() const { return reinterpret_cast<ObjClosure*>(as.obj); }
-    ObjNativeFun* as_nativefun() const { return reinterpret_cast<ObjNativeFun*>(as.obj); }
-    ObjClass* as_class() const { return reinterpret_cast<ObjClass*>(as.obj); }
-    ObjInstance* as_instance() const { return reinterpret_cast<ObjInstance*>(as.obj); }
-    ObjBoundMethod* as_bound_method() const { return reinterpret_cast<ObjBoundMethod*>(as.obj); }
+    ObjString* as_string() const { return reinterpret_cast<ObjString*>(as_obj()); }
+    ObjArray* as_array() const { return reinterpret_cast<ObjArray*>(as_obj()); }
+    ObjTable* as_table() const { return reinterpret_cast<ObjTable*>(as_obj()); }
+    ObjFunction* as_function() const { return reinterpret_cast<ObjFunction*>(as_obj()); }
+    ObjClosure* as_closure() const { return reinterpret_cast<ObjClosure*>(as_obj()); }
+    ObjNativeFun* as_nativefun() const { return reinterpret_cast<ObjNativeFun*>(as_obj()); }
+    ObjClass* as_class() const { return reinterpret_cast<ObjClass*>(as_obj()); }
+    ObjInstance* as_instance() const { return reinterpret_cast<ObjInstance*>(as_obj()); }
+    ObjBoundMethod* as_bound_method() const { return reinterpret_cast<ObjBoundMethod*>(as_obj()); }
+
+    ObjType obj_type() const { return as_obj()->type; }
 
     bool is_falsey() const {
         return is_nil() || (is_bool() && !as_bool());
     }
 
-    ObjType obj_type() { return as.obj->type; }
-
     void obj_incref() {
-        as.obj->refcount++;
+        as_obj()->refcount++;
     }
 
     void obj_decref() {
-        as.obj->refcount--;
-        if (as.obj->refcount == 0) {
+        Obj* obj = as_obj();
+        obj->refcount--;
+        if (obj->refcount == 0) {
             obj_free();
             // After this, the Value is in an invalid state, don't use it!
         }
@@ -132,8 +183,6 @@ struct Value {
     uint32_t hash() const;
 
     static bool equals(const Value& a, const Value& b);
-
-    static bool not_equals(const Value& a, const Value& b);
 
     std::string to_std_string(bool print_refcount = false) const;
 

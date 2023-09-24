@@ -42,7 +42,7 @@ void ObjTable::clear() {
 }
 
 static Entry* find_entry(Entry* entries, int32_t capacity, Value key) {
-    uint32_t index = key.hash() % capacity;
+    uint32_t index = key.hash() & (capacity - 1);
     Entry* tombstone = nullptr;
     for (;;) {
         Entry* entry = &entries[index];
@@ -57,7 +57,7 @@ static Entry* find_entry(Entry* entries, int32_t capacity, Value key) {
         else if (Value::equals(entry->key, key)) {
             return entry;
         }
-        index = (index + 1) % capacity;
+        index = (index + 1) & (capacity - 1);
     }
 }
 
@@ -114,7 +114,7 @@ bool ObjTable::set(Value key, Value value) {
 ObjString *ObjTable::get_string(const char *chars, int32_t length, uint32_t hash) {
     if (count == 0) return nullptr;
 
-    uint32_t index = hash % capacity;
+    uint32_t index = hash & (capacity - 1);
     for (;;) {
         Entry* entry = &entries[index];
         if (entry->key.is_nil()) {
@@ -128,7 +128,7 @@ ObjString *ObjTable::get_string(const char *chars, int32_t length, uint32_t hash
                 return key;
             }
         }
-        index = (index + 1) % capacity;
+        index = (index + 1) & (capacity - 1);
     }
 }
 
