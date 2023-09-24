@@ -2,11 +2,11 @@
 <AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
     <Type Name="Vector&lt;*&gt;">
         <Expand>
-            <Item Name="[size]">_size</Item>
-            <Item Name="[capacity]">_capacity</Item>
+            <Item Name="[size]">m_size</Item>
+            <Item Name="[capacity]">m_capacity</Item>
             <ArrayItems>
-                <Size>_size</Size>
-                <ValuePointer>_data</ValuePointer>
+                <Size>m_size</Size>
+                <ValuePointer>m_data</ValuePointer>
             </ArrayItems>
         </Expand>
     </Type>

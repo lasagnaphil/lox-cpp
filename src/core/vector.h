@@ -11,36 +11,36 @@
 
 template <class T>
 class Vector {
-    uint32_t _capacity, _size;
-    T* _data = nullptr;
+    uint32_t m_capacity, m_size;
+    T* m_data = nullptr;
 
 public:
-    Vector(uint32_t size = 0) : _capacity(size), _size(size), _data(size ? new T[size] : nullptr) {}
+    Vector(uint32_t size = 0) : m_capacity(size), m_size(size), m_data(size ? new T[size] : nullptr) {}
 
     Vector(uint32_t size, const T& item) {
-        for (uint32_t i = 0; i < _size; i++) {
-            _data[i] = item;
+        for (uint32_t i = 0; i < m_size; i++) {
+            m_data[i] = item;
         }
     }
 
     ~Vector() {
-        if (_data) {
-            delete[] _data;
+        if (m_data) {
+            delete[] m_data;
         }
     }
 
-    Vector(const Vector& other) : _capacity(other._capacity), _size(other._size),
-        _data(other._capacity? new T[other._capacity] : nullptr)
+    Vector(const Vector& other) : m_capacity(other.m_capacity), m_size(other.m_size),
+                                  m_data(other.m_capacity ? new T[other.m_capacity] : nullptr)
     {
-        copy(other._data, other._size, _data);
+        copy(other.m_data, other.m_size, m_data);
     }
 
     friend void swap(Vector& first, Vector& second) noexcept {
         using std::swap;
 
-        swap(first._capacity, second._capacity);
-        swap(first._size, second._size);
-        swap(first._data, second._data);
+        swap(first.m_capacity, second.m_capacity);
+        swap(first.m_size, second.m_size);
+        swap(first.m_data, second.m_data);
     }
 
     Vector(Vector&& other) noexcept {
@@ -52,107 +52,107 @@ public:
         return *this;
     }
 
-    Vector(std::initializer_list<T> lst) : _capacity(lst.size()), _size(lst.size()),
-        _data(lst.size()? new T[lst.size()] : nullptr)
+    Vector(std::initializer_list<T> lst) : m_capacity(lst.size()), m_size(lst.size()),
+                                           m_data(lst.size() ? new T[lst.size()] : nullptr)
     {
-        copy(std::data(lst), lst.size(), _data);
+        copy(std::data(lst), lst.size(), m_data);
     }
 
     operator Span<T>() {
-        return {_data, _size};
+        return {m_data, m_size};
     }
 
     operator Span<const T>() const {
-        return {_data, _size};
+        return {m_data, m_size};
     }
 
-    uint32_t size() const { return _size; }
-    int32_t ssize() const { return (int32_t)_size; }
+    uint32_t size() const { return m_size; }
+    int32_t ssize() const { return (int32_t)m_size; }
 
-    uint32_t capacity() const { return _capacity; }
+    uint32_t capacity() const { return m_capacity; }
 
-    const T* data() const { return _data; }
-    T* data() { return _data; }
+    const T* data() const { return m_data; }
+    T* data() { return m_data; }
 
-    const T* begin() const { return _data; }
-    T* begin() { return _data; }
+    const T* begin() const { return m_data; }
+    T* begin() { return m_data; }
 
-    const T* end() const { return _data + _size; }
-    T* end() { return _data + _size; }
+    const T* end() const { return m_data + m_size; }
+    T* end() { return m_data + m_size; }
 
     const T& operator[](uint32_t i) const {
-        log_assert(i < _size);
-        return _data[i];
+        log_assert(i < m_size);
+        return m_data[i];
     };
     T& operator[](uint32_t i) {
-        log_assert(i < _size);
-        return _data[i];
+        log_assert(i < m_size);
+        return m_data[i];
     }
 
-    const T& front() const { return _data[0]; }
-    T& front() { return _data[0]; }
+    const T& front() const { return m_data[0]; }
+    T& front() { return m_data[0]; }
 
-    const T& back() const { return _data[_size-1]; }
-    T& back() { return _data[_size-1]; }
+    const T& back() const { return m_data[m_size - 1]; }
+    T& back() { return m_data[m_size - 1]; }
 
-    bool empty() const { return _size == 0; }
+    bool empty() const { return m_size == 0; }
 
     void push_back(T elem) {
-        ensure_capacity(_size + 1);
-        _data[_size++] = elem;
+        ensure_capacity(m_size + 1);
+        m_data[m_size++] = elem;
     }
 
     T& push_empty() {
-        ensure_capacity(_size + 1);
-        return _data[_size++];
+        ensure_capacity(m_size + 1);
+        return m_data[m_size++];
     }
 
     template <class ...Args>
     void emplace_back(Args&&... args) {
-        ensure_capacity(_size + 1);
-        new (_data + _size++) T(args...);
+        ensure_capacity(m_size + 1);
+        new (m_data + m_size++) T(args...);
     }
 
     T pop_back() {
-        return _data[--_size];
+        return m_data[--m_size];
     }
 
     void resize(uint32_t new_size) {
         T* new_data = new T[new_size];
-        copy(_data, _size, new_data);
-        delete[] _data;
-        _data = new_data;
-        _capacity = _size = new_size;
+        copy(m_data, m_size, new_data);
+        delete[] m_data;
+        m_data = new_data;
+        m_capacity = m_size = new_size;
     }
 
     void reserve(uint32_t new_capacity) {
-        if (new_capacity <= _capacity) return;
+        if (new_capacity <= m_capacity) return;
         T* new_data = new T[new_capacity];
-        copy(_data, _size, new_data);
-        delete[] _data;
-        _data = new_data;
-        _capacity = new_capacity;
+        copy(m_data, m_size, new_data);
+        delete[] m_data;
+        m_data = new_data;
+        m_capacity = new_capacity;
     }
 
     void clear() {
-        if (_data) {
-            delete[] _data;
-            _data = nullptr;
+        if (m_data) {
+            delete[] m_data;
+            m_data = nullptr;
         }
-        _capacity = _size = 0;
+        m_capacity = m_size = 0;
     }
 
     T* find(const T& item) {
-        for (uint32_t i = 0; i < _size; i++) {
-            if (_data[i] == item) return &_data[i];
+        for (uint32_t i = 0; i < m_size; i++) {
+            if (m_data[i] == item) return &m_data[i];
         }
         return nullptr;
     }
 
     template <class Predicate>
     T* find_if(Predicate&& predicate) {
-        for (uint32_t i = 0; i < _size; i++) {
-            if (predicate(_data[i])) return &_data[i];
+        for (uint32_t i = 0; i < m_size; i++) {
+            if (predicate(m_data[i])) return &m_data[i];
         }
         return nullptr;
     }
@@ -170,13 +170,13 @@ private:
     }
 
     void ensure_capacity(uint32_t min_capacity) {
-        if (min_capacity <= _capacity) return;
-        size_t new_capacity = MAX(_capacity * 2, min_capacity);
+        if (min_capacity <= m_capacity) return;
+        size_t new_capacity = MAX(m_capacity * 2, min_capacity);
         T* new_data = new T[new_capacity];
-        copy(_data, _size, new_data);
-        delete[] _data;
-        _data = new_data;
-        _capacity = new_capacity;
+        copy(m_data, m_size, new_data);
+        delete[] m_data;
+        m_data = new_data;
+        m_capacity = new_capacity;
     }
 };
 

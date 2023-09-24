@@ -8,29 +8,29 @@
 template <class T, uint32_t _Size>
 class Array {
 public:
-    T _data[_Size];
+    T m_data[_Size];
 
     constexpr uint32_t size() const { return _Size; }
 
-    const T* data() const { return _data; }
-    T* data() { return _data; }
+    const T* data() const { return m_data; }
+    T* data() { return m_data; }
 
-    const T* begin() const { return _data; }
-    T* begin() { return _data; }
+    const T* begin() const { return m_data; }
+    T* begin() { return m_data; }
 
-    const T* end() const { return _data + _Size; }
-    T* end() { return _data + _Size; }
+    const T* end() const { return m_data + _Size; }
+    T* end() { return m_data + _Size; }
 
     constexpr const T& operator[](uint32_t i) const { 
         log_assert(i < _Size);
-        return _data[i]; 
+        return m_data[i];
     };
     constexpr T& operator[](uint32_t i) { 
         log_assert(i < _Size);
-        return _data[i]; 
+        return m_data[i];
     };
 
-    constexpr operator Span<T>() { return {_data, _Size}; }
+    constexpr operator Span<T>() { return {m_data, _Size}; }
 };
 
 // Template deduction rules for Array. 

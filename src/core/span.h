@@ -4,23 +4,23 @@
 
 template <class T>
 class Span {
-    T* _data;
-    uint32_t _size;
+    T* m_data;
+    uint32_t m_size;
 
 public:
-    Span(T* data = nullptr, uint32_t size = 0) : _data(data), _size(size) {}
+    Span(T* data = nullptr, uint32_t size = 0) : m_data(data), m_size(size) {}
 
-    const T* data() const { return _data; }
-    T* data() { return _data; }
+    const T* data() const { return m_data; }
+    T* data() { return m_data; }
 
-    const T* begin() const { return _data; }
-    T* begin() { return _data; }
-    const T* end() const { return _data + _size; }
-    T* end() { return _data + _size; }
+    const T* begin() const { return m_data; }
+    T* begin() { return m_data; }
+    const T* end() const { return m_data + m_size; }
+    T* end() { return m_data + m_size; }
 
-    const T& operator[](uint32_t i) const { return _data[i]; }
-    T& operator[](uint32_t i) { return _data[i]; }
+    const T& operator[](uint32_t i) const { return m_data[i]; }
+    T& operator[](uint32_t i) { return m_data[i]; }
 
-    uint32_t size() const { return _size; }
-    int32_t ssize() const { return (int32_t)_size; }
+    uint32_t size() const { return m_size; }
+    int32_t ssize() const { return (int32_t)m_size; }
 };

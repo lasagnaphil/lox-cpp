@@ -4,40 +4,40 @@
 template <class T>
 class UniquePtr {
 private:
-	T* _data;
+	T* m_data;
 public:
-	UniquePtr() : _data(nullptr) {}
+	UniquePtr() : m_data(nullptr) {}
 	UniquePtr(const UniquePtr&) = delete;
 	UniquePtr& operator=(const UniquePtr&) = delete;
-	UniquePtr(T* data) : _data(data) {}
-	UniquePtr(UniquePtr&& other) : _data(other._data) {
-		other._data = nullptr;
+	UniquePtr(T* data) : m_data(data) {}
+	UniquePtr(UniquePtr&& other) : m_data(other.m_data) {
+		other.m_data = nullptr;
 	}
 	~UniquePtr() { reset(); }
 
     UniquePtr &operator=(UniquePtr&& other) {
         reset();
-        _data = other._data;
-        other._data = nullptr;
+        m_data = other.m_data;
+        other.m_data = nullptr;
         return *this;
     }
 
 	void reset() noexcept(true) {
-		delete _data;
-		_data = nullptr;
+		delete m_data;
+		m_data = nullptr;
 	}
 
-	T* get() { return _data; }
-	const T* get() const { return _data; }
-	T* operator->() { return _data; }
-	const T* operator->() const { return _data; }
+	T* get() { return m_data; }
+	const T* get() const { return m_data; }
+	T* operator->() { return m_data; }
+	const T* operator->() const { return m_data; }
 
-	T& operator*() { return *_data; }
-	const T& operator*() const { return *_data; }
+	T& operator*() { return *m_data; }
+	const T& operator*() const { return *m_data; }
 
 	T* release() {
-		T* tmp = _data;
-		_data = nullptr;
+		T* tmp = m_data;
+		m_data = nullptr;
 		return tmp;
 	}
 };
