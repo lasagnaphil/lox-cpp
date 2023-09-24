@@ -56,8 +56,7 @@ struct ObjInstance;
 struct ObjBoundMethod;
 
 struct Value {
-    ValueType type : 4;
-    uint32_t uid : 28; // TODO: make this 64-bit?
+    ValueType type;
     union {
         bool boolean;
         double number;
@@ -136,6 +135,6 @@ struct Value {
 
     static bool not_equals(const Value& a, const Value& b);
 
-    std::string to_std_string() const;
+    std::string to_std_string(bool print_refcount = false) const;
 
 };

@@ -96,14 +96,19 @@ bool Value::not_equals(const Value &a, const Value &b) {
     }
 }
 
-std::string object_to_string(Value value);
+std::string object_to_string(Value value, bool print_refcount);
 
-std::string value_to_string(Value value) {
+std::string value_to_string(Value value, bool print_refcount) {
     switch (value.type) {
         case VAL_BOOL: return value.as_bool()? "true": "false";
         case VAL_NIL: return "nil";
         case VAL_NUMBER: return fmt::format("{:g}", value.as_number());
-        case VAL_OBJ: return object_to_string(value);
+        case VAL_OBJ: {
+            if (print_refcount)
+                return fmt::format("{} ({})", object_to_string(value, true), value.as.obj->refcount);
+            else
+                return object_to_string(value, false);
+        }
     }
 }
 
@@ -116,7 +121,7 @@ std::string function_to_string(ObjFunction* fn) {
     }
 }
 
-std::string object_to_string(Value value) {
+std::string object_to_string(Value value, bool print_refcount) {
     switch (value.as.obj->type) {
         case OBJ_STRING: return value.as_string()->chars;
         case OBJ_UPVALUE: {
@@ -128,11 +133,9 @@ std::string object_to_string(Value value) {
             bool entry_start = true;
             for (int32_t i = 0; i < array->count; i++) {
                 Value value = array->values[i];
-                if(!value.is_nil()) {
-                    if (entry_start) entry_start = false;
-                    else str += ", ";
-                    str += value_to_string(value);
-                }
+                if (entry_start) entry_start = false;
+                else str += ", ";
+                str += value_to_string(value, print_refcount);
             }
             str += " ]";
             return str;
@@ -146,9 +149,9 @@ std::string object_to_string(Value value) {
                 if (!entry->key.is_nil()) {
                     if (entry_start) entry_start = false;
                     else str += ", ";
-                    str += value_to_string(entry->key);
+                    str += value_to_string(entry->key, print_refcount);
                     str += " = ";
-                    str += value_to_string(entry->value);
+                    str += value_to_string(entry->value, print_refcount);
                 }
             }
             str += " }";
@@ -178,6 +181,6 @@ std::string object_to_string(Value value) {
     }
 }
 
-std::string Value::to_std_string() const {
-    return value_to_string(*this);
+std::string Value::to_std_string(bool print_refcount) const {
+    return value_to_string(*this, print_refcount);
 }

@@ -19,10 +19,14 @@ ObjUpvalue* create_obj_upvalue(Value* slot) {
     upvalue->location = slot;
     upvalue->closed = Value();
     upvalue->next = nullptr;
+    if (slot->is_obj()) slot->obj_incref();
     return upvalue;
 }
 
 void free_obj_upvalue(ObjUpvalue* upvalue) {
+    if (upvalue && upvalue->location->is_obj()) {
+        upvalue->location->obj_decref();
+    }
     delete_object<ObjUpvalue>(upvalue);
 }
 

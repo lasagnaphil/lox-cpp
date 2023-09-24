@@ -65,26 +65,26 @@ private:
     template <typename ...Args>
     inline void runtime_error(const char* fmt, Args&&... args) {
         fmt::print(fmt, std::forward<Args>(args)...);
-        fputs("\n", stderr);
+        fputs("\n", stdout);
 
         for (int32_t i = m_frame_count - 1; i >= 0; i--) {
             CallFrame* frame = &m_frames[i];
             ObjFunction* function = frame->closure->function;
             size_t instruction = frame->ip - function->chunk.m_code.data() - 1;
-            fmt::print(stderr, "[line {}] in ",
+            fmt::print("[line {}] in ",
                        function->chunk.m_lines[instruction]);
             if (function->name == nullptr) {
-                fmt::print(stderr, "script\n");
+                fmt::print("script\n");
             }
             else {
-                fmt::print(stderr, "{}()\n", function->name->chars);
+                fmt::print("{}()\n", function->name->chars);
             }
         }
 
         auto& frame = m_frames[m_frame_count - 1];
         size_t instr = frame.ip - frame.closure->function->chunk.m_code.data() - 1;
         int line = frame.closure->function->chunk.m_lines[instr];
-        fmt::print(stderr, "[line {}] in script\n", line);
+        fmt::print("[line {}] in script\n", line);
         reset_stack();
     }
 

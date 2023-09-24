@@ -132,25 +132,31 @@ InterpretResult VM::run() {
         fmt::print("          ");
         for (Value* slot = m_stack.data(); slot < m_stack_top; slot++) {
             fmt::print("[ ");
-            std::string str = slot->to_std_string();
+            std::string str = slot->to_std_string(true);
             fputs(str.c_str(), stdout);
             fmt::print(" ]");
         }
         fmt::print("\n");
         frame->closure->function->chunk.disassemble_instruction(
             (int32_t)(frame->ip - frame->closure->function->chunk.m_code.data()));
+        fflush(stdout);
 #endif
         uint8_t inst = READ_BYTE();
         switch (inst) {
             case OP_CONSTANT: {
                 Value constant = READ_CONSTANT();
+                if (constant.is_obj()) constant.obj_incref();
                 push(constant);
                 break;
             }
             case OP_NIL: push(Value()); break;
             case OP_TRUE: push(Value(true)); break;
             case OP_FALSE: push(Value(false)); break;
-            case OP_POP: pop(); break;
+            case OP_POP: {
+                Value value = pop();
+                if (value.is_obj()) value.obj_decref();
+                break;
+            }
             case OP_SET_LOCAL: {
                 uint8_t slot = READ_BYTE();
                 auto& val = frame->slots[slot];
@@ -192,18 +198,36 @@ InterpretResult VM::run() {
                 if (m_globals.set(name_value, peek(0))) {
                     m_globals.remove(name_value);
                     runtime_error("Undefined variable '{}'.", name->chars);
+                    name_value.obj_decref();
                     return InterpretResult::RuntimeError;
                 }
                 break;
             }
             case OP_GET_UPVALUE: {
                 uint8_t slot = READ_BYTE();
-                push(*frame->closure->upvalues[slot]->location);
+                Value value = *frame->closure->upvalues[slot]->location;
+                push(value);
+                if (value.is_obj()) value.obj_incref();
                 break;
             }
             case OP_SET_UPVALUE: {
                 uint8_t slot = READ_BYTE();
-                *frame->closure->upvalues[slot]->location = peek(0);
+                Value& value = *frame->closure->upvalues[slot]->location;
+                if (value.is_obj()) value.obj_decref();
+                value = peek(0);
+                if (value.is_obj()) value.obj_incref();
+                break;
+            }
+            case OP_GET_SUPER: {
+                ObjString* name = READ_STRING();
+                Value superclass_value = pop();
+                ObjClass* superclass = superclass_value.as_class();
+
+                if (!bind_method(superclass, name)) {
+                    superclass_value.obj_decref();
+                    return InterpretResult::RuntimeError;
+                }
+                superclass_value.obj_decref();
                 break;
             }
             case OP_EQUAL: {
@@ -217,7 +241,7 @@ InterpretResult VM::run() {
             case OP_NOT_EQUAL: {
                 Value b = pop();
                 Value a = pop();
-                push(Value(Value::not_equals(a, b)));
+                push(Value(!Value::equals(a, b)));
                 if (a.is_obj()) a.obj_decref();
                 if (b.is_obj()) b.obj_decref();
                 break;
@@ -298,6 +322,19 @@ InterpretResult VM::run() {
                 frame = &m_frames[m_frame_count - 1];
                 break;
             }
+            case OP_SUPER_INVOKE: {
+                ObjString* method = READ_STRING();
+                int32_t arg_count = READ_BYTE();
+                Value superclass_value = pop();
+                ObjClass* superclass = superclass_value.as_class();
+                if (!invoke_from_class(superclass, method, arg_count)) {
+                    superclass_value.obj_decref();
+                    return InterpretResult::RuntimeError;
+                }
+                frame = &m_frames[m_frame_count - 1];
+                superclass_value.obj_decref();
+                break;
+            }
             case OP_CLOSURE: {
                 ObjFunction* function = READ_CONSTANT().as_function();
                 ObjClosure* closure = create_obj_closure(function);
@@ -328,25 +365,24 @@ InterpretResult VM::run() {
                     return InterpretResult::Ok;
                 }
 
-                m_stack_top = frame->slots;
+                while (m_stack_top != frame->slots) {
+                    m_stack_top--;
+                    if (m_stack_top->is_obj()) m_stack_top->obj_decref();
+                }
                 push(result);
                 frame = &m_frames[m_frame_count - 1];
                 break;
             }
             case OP_TABLE_NEW: {
                 ObjTable* table = create_obj_table();
-                Value value = Value(table);
-                value.obj_incref();
-                push(value);
+                push(Value(table));
                 break;
             }
             case OP_ARRAY_NEW: {
                 uint16_t size = READ_SHORT();
                 ObjArray* array = create_obj_array();
                 array->resize(size);
-                Value value = Value(array);
-                value.obj_incref();
-                push(value);
+                push(Value(array));
                 break;
             }
             case OP_GET: {
@@ -370,6 +406,7 @@ InterpretResult VM::run() {
                 }
                 push(value);
                 if (value.is_obj()) value.obj_incref();
+                obj.obj_decref();
                 break;
             }
             case OP_GET_NOPOP: {
@@ -401,8 +438,10 @@ InterpretResult VM::run() {
                 ObjString* name = READ_STRING();
                 Value value;
                 if (instance->fields.get(Value(name), &value)) {
-                    pop();
+                    Value inst_value = pop();
+                    inst_value.obj_decref();
                     push(value);
+                    if (value.is_obj()) value.obj_incref();
                     break;
                 }
 
@@ -413,20 +452,35 @@ InterpretResult VM::run() {
             }
             case OP_SET_PROPERTY: {
                 // TODO: Support field access for tables?
-                if (!peek(1).is_instance()) {
+                Value inst_value = peek(1);
+                if (!inst_value.is_instance()) {
                     runtime_error("Only instances have properties.");
                     return InterpretResult::RuntimeError;
                 }
 
-                ObjInstance* instance = peek(1).as_instance();
+                ObjInstance* instance = inst_value.as_instance();
                 instance->fields.set(Value(READ_STRING()), peek(0));
-                Value value = pop();
+                Value prop_value = pop();
                 pop();
-                push(value);
+                push(prop_value);
+                if (prop_value.is_obj()) prop_value.obj_incref();
+                inst_value.obj_decref();
                 break;
             }
             case OP_CLASS: {
                 push(Value(create_obj_class(READ_STRING())));
+                break;
+            }
+            case OP_INHERIT: {
+                Value superclass = peek(1);
+                if (!superclass.is_class()) {
+                    runtime_error("Superclass must be a class.");
+                    return InterpretResult::RuntimeError;
+                }
+                ObjClass* subclass = peek(0).as_class();
+                ObjTable::add_all(&superclass.as_class()->methods, &subclass->methods);
+                Value subclass_value = pop(); // subclass
+                subclass_value.obj_decref();
                 break;
             }
             case OP_METHOD: {
@@ -450,7 +504,10 @@ bool VM::call_value(Value callee, int32_t arg_count) {
             case OBJ_NATIVEFUN: {
                 auto native_fn = callee.as_nativefun()->function;
                 Value result = native_fn(arg_count, m_stack_top - arg_count);
-                m_stack_top -= arg_count + 1;
+                for (int32_t i = 0; i < arg_count + 1; i++) {
+                    m_stack_top--;
+                    if (m_stack_top->is_obj()) m_stack_top->obj_decref();
+                }
                 push(result);
                 return true;
             }
@@ -617,7 +674,10 @@ bool VM::set(Value obj, Value key, Value value) {
 void VM::define_method(ObjString *name) {
     Value method = peek(0);
     ObjClass* klass = peek(1).as_class();
-    klass->methods.set(Value(name), method);
+    Value name_value = Value(name);
+    klass->methods.set(name_value, method);
+    name_value.obj_incref();
+    method.obj_incref();
     pop();
 }
 
@@ -630,7 +690,8 @@ bool VM::bind_method(ObjClass *klass, ObjString *name) {
 
     ObjBoundMethod* bound = create_obj_bound_method(peek(0), method.as_closure());
 
-    pop();
+    Value instance_value = pop(); // instance
+    instance_value.obj_decref();
     push(Value(bound));
     return true;
 }

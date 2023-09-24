@@ -1,5 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+    <Type Name="Vector&lt;*&gt;">
+        <Expand>
+            <Item Name="[size]">_size</Item>
+            <Item Name="[capacity]">_capacity</Item>
+            <ArrayItems>
+                <Size>_size</Size>
+                <ValuePointer>_data</ValuePointer>
+            </ArrayItems>
+        </Expand>
+    </Type>
     <Type Name="Token">
         <DisplayString>{start,[length]su}</DisplayString>
         <StringView>start,[length]su</StringView>
@@ -10,8 +20,8 @@
         </Expand>
     </Type>
     <Type Name="ObjString">
-        <DisplayString>{chars,[length]su}</DisplayString>
-        <StringView>chars,[length]su</StringView>
+        <DisplayString>{(char*)chars,[length]su}</DisplayString>
+        <StringView>(char*)chars,[length]su</StringView>
         <Expand>
             <Item Name="[length]">length</Item>
             <Item Name="[hash]">hash</Item>
@@ -22,7 +32,7 @@
             <Item Name="[count]">count</Item>
             <Item Name="[capacity]">capacity</Item>
             <ArrayItems>
-                <Size>count</Size>
+                <Size>capacity</Size>
                 <ValuePointer>entries</ValuePointer>
             </ArrayItems>
         </Expand>

@@ -60,14 +60,14 @@ struct Upvalue {
 
 #define MEMBER_FN(object,ptrToMember)  ((object).*(ptrToMember))
 
-class ClassCompiler {
-public:
+struct ClassCompiler {
     void init(ClassCompiler* enclosing) {
-        m_enclosing = enclosing;
+        enclosing = enclosing;
+        has_superclass = false;
     }
-    ClassCompiler* get_enclosing() const { return m_enclosing; }
-private:
-    ClassCompiler* m_enclosing;
+
+    ClassCompiler* enclosing;
+    bool has_superclass;
 };
 
 class Compiler {
@@ -298,6 +298,22 @@ public:
         class_compiler.init(m_class_compiler);
         m_class_compiler = &class_compiler;
 
+        if (m_parser->match(TOKEN_LESS)) {
+            m_parser->consume(TOKEN_IDENTIFIER, "Expect superclass name.");
+            variable(false);
+            if (identifiers_equal(class_name, m_parser->previous())) {
+                m_parser->error("A class can't inherit from itself.");
+            }
+
+            begin_scope();
+            add_local(synthetic_token("super"));
+            define_variable(0);
+
+            named_variable(class_name, false);
+            emit_byte(OP_INHERIT);
+            m_class_compiler->has_superclass = true;
+        }
+
         named_variable(class_name, false);
         m_parser->consume(TOKEN_LEFT_BRACE, "Expect '{' before class body.");
         while (!m_parser->check(TOKEN_RIGHT_BRACE) && !m_parser->check(TOKEN_EOF)) {
@@ -306,7 +322,11 @@ public:
         m_parser->consume(TOKEN_RIGHT_BRACE, "Expect '}' after class body.");
         emit_byte(OP_POP);
 
-        m_class_compiler = m_class_compiler->get_enclosing();
+        if (m_class_compiler->has_superclass) {
+            end_scope();
+        }
+
+        m_class_compiler = m_class_compiler->enclosing;
     }
 
     void fun_declaration() {
@@ -568,9 +588,42 @@ public:
         named_variable(m_parser->previous(), can_assign);
     }
 
+    Token synthetic_token(const char* start) {
+        Token token;
+        token.start = start;
+        token.line = -1;
+        token.length = strlen(start);
+        token.type = TOKEN_IDENTIFIER;
+        return token;
+    }
+
+    void super_(bool can_assign) {
+        if (m_class_compiler == nullptr) {
+            m_parser->error("Can't use 'super' outside of a class.");
+        }
+        else if (!m_class_compiler->has_superclass) {
+            m_parser->error("Can't use 'super' in a class with no superclass.");
+        }
+        m_parser->consume(TOKEN_DOT, "Expect '.' after 'super'.");
+        m_parser->consume(TOKEN_IDENTIFIER, "Expect superclass method name.");
+        uint8_t name = identifier_constant(m_parser->previous());
+
+        named_variable(synthetic_token("this"), false);
+        if (m_parser->match(TOKEN_LEFT_PAREN)) {
+            uint8_t arg_count = argument_list();
+            named_variable(synthetic_token("super"), false);
+            emit_bytes(OP_SUPER_INVOKE, name);
+            emit_byte(arg_count);
+        }
+        else {
+            named_variable(synthetic_token("super"), false);
+            emit_bytes(OP_GET_SUPER, name);
+        }
+    }
+
     void this_(bool can_assign) {
         if (m_class_compiler == nullptr) {
-            m_parser->error("Can't use 'this' outside of a class");
+            m_parser->error("Can't use 'this' outside of a class.");
         }
         variable(false);
     }

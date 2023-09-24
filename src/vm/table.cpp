@@ -67,9 +67,6 @@ bool ObjTable::get(Value key, Value *value) const {
     if (entry->key.is_nil()) return false;
 
     *value = entry->value;
-    if (value->is_obj()) {
-        value->obj_incref();
-    }
     return true;
 }
 

@@ -54,6 +54,7 @@ int32_t Chunk::disassemble_instruction(int32_t offset) const {
         case OP_METHOD:
         case OP_GET_PROPERTY:
         case OP_SET_PROPERTY:
+        case OP_GET_SUPER:
             return print_constant_instruction((OpCode)instr, offset);
         case OP_NIL:
         case OP_TRUE:
@@ -76,6 +77,7 @@ int32_t Chunk::disassemble_instruction(int32_t offset) const {
         case OP_GET_NOPOP:
         case OP_SET_NOPOP:
         case OP_CLOSE_UPVALUE:
+        case OP_INHERIT:
             return print_simple_instruction((OpCode)instr, offset);
         case OP_GET_LOCAL:
         case OP_SET_LOCAL:
@@ -84,6 +86,7 @@ int32_t Chunk::disassemble_instruction(int32_t offset) const {
         case OP_CALL:
             return print_byte_instruction((OpCode)instr, offset);
         case OP_INVOKE:
+        case OP_SUPER_INVOKE:
             return print_invoke_instruction((OpCode)instr, offset);
         case OP_CLOSURE: {
             offset++;
@@ -139,7 +142,7 @@ int32_t Chunk::print_invoke_instruction(OpCode opcode, int32_t offset) const {
     assert(opcode < OP_COUNT);
     uint8_t constant = m_code[offset + 1];
     uint8_t arg_count = m_code[offset + 2];
-    fmt::print("{:<16s} ({:d} args) {:4d} '", g_opcode_str[opcode], arg_count, constant);
+    fmt::print("{:<16s} {:4d} args {:4d} '", g_opcode_str[opcode], arg_count, constant);
     fputs(m_constants[constant].to_std_string().c_str(), stdout);
     fputs("'\n", stdout);
     return offset + 3;

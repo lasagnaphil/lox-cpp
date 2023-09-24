@@ -32,10 +32,12 @@
     X(OP_LOOP)            \
     X(OP_CALL)            \
     X(OP_INVOKE)          \
+    X(OP_SUPER_INVOKE)    \
     X(OP_CLOSURE)         \
     X(OP_CLOSE_UPVALUE)   \
     X(OP_RETURN)          \
     X(OP_CLASS)           \
+    X(OP_INHERIT)         \
     X(OP_METHOD)          \
     X(OP_ARRAY_NEW)       \
     X(OP_TABLE_NEW)       \
@@ -45,6 +47,7 @@
     X(OP_SET_NOPOP)       \
     X(OP_GET_PROPERTY)    \
     X(OP_SET_PROPERTY)    \
+    X(OP_GET_SUPER)       \
     X(OP_INVALID)
 
 enum OpCode : uint8_t {
